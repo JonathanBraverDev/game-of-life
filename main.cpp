@@ -96,17 +96,19 @@ bool cellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vert
         neighbors++;
 
     if (old_state[cellX][cellY] == alive && neighbors <= 1) { // lonliness
-        status = false;
+        status = dead;
     }
-    // IMPORTANT: survival is assumed as no change occurs, between 2-3 neighbors
+    else if (old_state[cellX][cellY] == alive && (neighbors == 2 || neighbors == 3)) { // survival
+        status = alive;
+    }
     else if (old_state[cellX][cellY] == alive && neighbors >= 4) { // ovepopulation
-        status = false;
+        status = dead;
     }
-    else if (old_state[cellX][cellY] == dead && neighbors == 3 ) { // multiplication
-        status = true;
+    else if (old_state[cellX][cellY] == dead && neighbors == 3) { // multiplication
+        status = alive;
     }
     else { // just in case, assume dead
-        status = false;
+        status = dead;
     }
 
     return status;
@@ -154,12 +156,11 @@ bool stasis(bool** old_state, bool** current_state, int horizontal, int vertical
     return true;
 }
 
-
 // creates a single block matrix allocation and splits it into arrays
 template <typename T>
 T** createMatrix(int horizontal, int  vertical) {
     T** matrix = new T* [horizontal];
-    matrix[0] = new bool[horizontal * vertical];
+    matrix[0] = new T[horizontal * vertical];
     for (int cellX = 1; cellX < horizontal; cellX++) {
         matrix[cellX] = matrix[0] + cellX * vertical;
     }
@@ -173,6 +174,7 @@ void deleteMatrix(T** matrix) {
     delete[] matrix[0];
     delete[] matrix;
 }
+
 
 
 
@@ -208,10 +210,19 @@ int main()
             }
         }
     }
+
+    // initial render
+    updateScreen(current_state, horizontal, vertical);
     
 
     for (int tmp = 0; tmp < 10; tmp++)
     {
+        swap(old_state, current_state); // 'save' the old state without copying
+        updateMatrixState(old_state, current_state, horizontal, vertical);
+
+        updateScreen(current_state, horizontal, vertical);
+        Sleep(1500);
+
         if (extinction(current_state, horizontal, vertical)) {
             cout << "ded" << endl;
             break;
@@ -220,12 +231,6 @@ int main()
             cout << "stasis" << endl;
             break;
         }
-
-        updateScreen(current_state, horizontal, vertical);
-        Sleep(1500);
-
-        swap(old_state, current_state); // 'save' the old state without copying
-        updateMatrixState(old_state, current_state, horizontal, vertical);
     }
 
     deleteMatrix<bool>(old_state);
