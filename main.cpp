@@ -1,8 +1,5 @@
-#include<windows.h>
-#include<iostream>
-#include <winuser.h>
-#include <cmath>
-#include "wtypes.h"
+#include <windows.h>
+#include <iostream>
 #include <ctime>
 #include <cstdlib>
 
@@ -12,6 +9,10 @@ constexpr auto INITIAL_LIFE_RATIO = 5;
 
 constexpr auto alive = true;
 constexpr auto dead = false;
+
+//Set colors
+const COLORREF ALIVE = RGB(255, 255, 255);
+const COLORREF DEAD = RGB(0, 0, 0);
 
 
 // Get the horizontal and vertical screen sizes in pixel
@@ -40,16 +41,37 @@ void ShowConsoleCursor(bool showFlag)
     SetConsoleCursorInfo(out, &cursorInfo);
 }
 
-void updateScreen(bool** current_state, int horizontal, int vertical) {
+void updateScreen(bool** old_state, bool** current_state, int horizontal, int vertical) {
     //Get a console handle
     HWND myconsole = GetConsoleWindow();
     //Get a handle to device context
     HDC mydc = GetDC(myconsole);
 
 
-    //Choose any color
-    COLORREF ALIVE = RGB(255, 255, 255);
-    COLORREF DEAD = RGB(0, 0, 0);
+    for (int cellX = 0; cellX < horizontal; cellX++)
+    {
+        for (int cellY = 0; cellY < vertical; cellY++)
+        {
+            if (old_state[cellX][cellY] != current_state[cellX][cellY]) { // will not update uncahnged cells
+                if (current_state[cellX][cellY] == alive)
+                {
+                    SetPixel(mydc, cellX, cellY, ALIVE);
+                }
+                else {
+                    SetPixel(mydc, cellX, cellY, DEAD);
+                }
+            }
+        }
+    }
+
+    ReleaseDC(myconsole, mydc);
+}
+
+void updateScreen(bool** current_state, int horizontal, int vertical) {
+    //Get a console handle
+    HWND myconsole = GetConsoleWindow();
+    //Get a handle to device context
+    HDC mydc = GetDC(myconsole);
 
 
     for (int cellX = 0; cellX < horizontal; cellX++)
@@ -73,7 +95,7 @@ bool cellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vert
     int neighbors = 0;
     bool status;
 
-    // counting neighbors wth bound limits
+    // counting neighbors with bound limits
     if (cellX > 0 && old_state[cellX - 1][cellY] == 1)
         neighbors++;
     if (cellY > 0 && old_state[cellX][cellY - 1] == 1)
@@ -213,15 +235,16 @@ int main()
 
     // initial render
     updateScreen(current_state, horizontal, vertical);
+    //Sleep(1500);
     
 
-    for (int tmp = 0; tmp < 10; tmp++)
+    for (int tmp = 0; tmp < 1000; tmp++)
     {
         swap(old_state, current_state); // 'save' the old state without copying
         updateMatrixState(old_state, current_state, horizontal, vertical);
 
-        updateScreen(current_state, horizontal, vertical);
-        Sleep(1500);
+        updateScreen(old_state, current_state, horizontal, vertical);
+        //Sleep(1500);
 
         if (extinction(current_state, horizontal, vertical)) {
             cout << "ded" << endl;
