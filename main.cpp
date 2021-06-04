@@ -5,7 +5,7 @@
 
 using namespace std;
 
-constexpr auto INITIAL_LIFE_RATIO = 5;
+constexpr auto INITIAL_LIFE_RATIO = 10;
 
 constexpr auto alive = true;
 constexpr auto dead = false;
@@ -178,15 +178,40 @@ bool stasis(bool** old_state, bool** current_state, int horizontal, int vertical
     return true;
 }
 
+// checkes if the activity level in the system has dropped too low
+bool low_Activity(bool** old_state, bool** current_state, int horizontal, int vertical, float threshold = 1) {
+    const long total_cells = vertical * horizontal;
+    long cells_changed = 0;
+    bool result = false;
+
+    for (int cellX = 0; cellX < horizontal; cellX++)
+    {
+        for (int cellY = 0; cellY < vertical; cellY++)
+        {
+            if (old_state[cellX][cellY] != current_state[cellX][cellY])
+            {
+                cells_changed++;
+            }
+        }
+    }
+
+    if ((float)cells_changed / total_cells * 100 < threshold)
+    {
+        result = true;
+    }
+
+    return result;
+}
+
 // creates a single block matrix allocation and splits it into arrays
 template <typename T>
 T** createMatrix(int horizontal, int  vertical) {
-    T** matrix = new T* [horizontal];
+    T** matrix = new T * [horizontal];
     matrix[0] = new T[horizontal * vertical];
     for (int cellX = 1; cellX < horizontal; cellX++) {
         matrix[cellX] = matrix[0] + cellX * vertical;
     }
-    
+
     return matrix;
 }
 
@@ -206,7 +231,7 @@ int main()
     SetConsoleDisplayMode(GetStdHandle(STD_OUTPUT_HANDLE), CONSOLE_FULLSCREEN_MODE, 0);
     ShowScrollBar(GetConsoleWindow(), SB_VERT, 0);
     ShowConsoleCursor(false);
-    Sleep(1000);
+    Sleep(2000);
 
     // get screen rezsolution
     int horizontal = 0;
@@ -236,7 +261,7 @@ int main()
     // initial render
     updateScreen(current_state, horizontal, vertical);
     //Sleep(1500);
-    
+
 
     for (int tmp = 0; tmp < 1000; tmp++)
     {
@@ -252,6 +277,10 @@ int main()
         }
         else if (stasis(old_state, current_state, horizontal, vertical)) {
             cout << "stasis" << endl;
+            break;
+        }
+        else if (low_Activity(old_state, current_state, horizontal, vertical)) {
+            cout << "low activity" << endl;
             break;
         }
     }
