@@ -8,14 +8,14 @@
 // GLIDER will start will a screen full of gliders
 #define FHD
 // FHD will force the screen to 1080p, windows scaling fucks up the automatic detection
-#define N_TEXTPRINT
-// TEXTPRINT will print the grid in text instead of pixels
 #define NODELAY
 // NODELAY will disable the sleep between renders
 #define N_BRUTAL
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
 #define MULTIRENDER
+// LINEAR will render the scren as a big chunk
 // MULTIRENDER will split rendering into a few columns to speed up rendering
+// TEXT will print the grid in text instead of pixels
 
 using namespace std;
 
@@ -56,7 +56,7 @@ void ShowConsoleCursor(bool showFlag)
 }
 
 #ifdef MULTIRENDER
-static void renderThread(bool** old_state, bool** current_state, int vertical, int begin, int end) {
+void renderThread(bool** current_state, int vertical, int begin, int end, bool** old_state, bool initial) {
     //Get a console handle
     HWND myconsole = GetConsoleWindow();
     //Get a handle to device context
@@ -66,7 +66,7 @@ static void renderThread(bool** old_state, bool** current_state, int vertical, i
     {
         for (int cellY = 0; cellY < vertical; cellY++)
         {
-            if (old_state[cellX][cellY] != current_state[cellX][cellY]) { // will not update uncahnged cells
+            if (initial || old_state[cellX][cellY] != current_state[cellX][cellY]) { // will not update uncahnged cells
                 if (current_state[cellX][cellY] == ALIVE)
                 {
                     SetPixel(mydc, cellX, cellY, COLOR_ALIVE);
@@ -83,34 +83,41 @@ static void renderThread(bool** old_state, bool** current_state, int vertical, i
 #endif // MULTIRENDER
 
 
-void updateScreen(bool** old_state, bool** current_state, int horizontal, int vertical) {
+void updateScreen(bool** current_state, int horizontal, int vertical, bool** old_state = NULL, bool initial = true) {
+#ifdef MULTIRENDER
     unsigned int numOfThreads = thread::hardware_concurrency();
-    thread* threads = new thread [numOfThreads];
+    thread* threads = new thread[numOfThreads];
     const unsigned int renderZoneSize = horizontal / numOfThreads;
     unsigned int firstOffset = horizontal - renderZoneSize * numOfThreads;
     int begin = 0;
     int end = firstOffset + renderZoneSize; // the first zone takes the rounding error
-    
-    threads[0] = thread(renderThread, old_state, current_state, vertical, begin, end);
+
+    threads[0] = thread(renderThread, current_state, vertical, begin, end, old_state, initial);
 
     for (int created = 1; created < numOfThreads; created++) // !IMPORTANT! set to 1 to skip the first thread creation
     {
         begin = end;
         end += renderZoneSize;
-        threads[created] = thread(renderThread, old_state, current_state, vertical, begin, end);
+        threads[created] = thread(renderThread, current_state, vertical, begin, end, old_state, initial);
     }
 
     for (int joined = 0; joined < numOfThreads; joined++) // !IMPORTANT! set to 1 to skip the first thread creation
     {
         threads[joined].join();
     }
+#endif // MULTIRENDER
 
-#ifndef MULTIRENDER
+#ifdef LINEAR
+    //Get a console handle
+    HWND myconsole = GetConsoleWindow();
+    //Get a handle to device context
+    HDC mydc = GetDC(myconsole);
+
     for (int cellX = 0; cellX < horizontal; cellX++)
     {
         for (int cellY = 0; cellY < vertical; cellY++)
         {
-            if (old_state[cellX][cellY] != current_state[cellX][cellY]) { // will not update uncahnged cells
+            if (initial || old_state[cellX][cellY] != current_state[cellX][cellY]) { // will not update uncahnged cells
                 if (current_state[cellX][cellY] == ALIVE)
                 {
                     SetPixel(mydc, cellX, cellY, COLOR_ALIVE);
@@ -121,56 +128,31 @@ void updateScreen(bool** old_state, bool** current_state, int horizontal, int ve
             }
         }
     }
-#endif // !MULTIRENDER
-}
+#endif // LINEAR
 
-void updateScreen(bool** current_state, int horizontal, int vertical) {
-    //Get a console handle
-    HWND myconsole = GetConsoleWindow();
-    //Get a handle to device context
-    HDC mydc = GetDC(myconsole);
-
-#ifndef TEXTPRINT
-    for (int cellX = 0; cellX < horizontal; cellX++)
-    {
-        for (int cellY = 0; cellY < vertical; cellY++)
-        {
-            if (current_state[cellX][cellY] == ALIVE)
-            {
-                SetPixel(mydc, cellX, cellY, COLOR_ALIVE);
-            }
-            else {
-                SetPixel(mydc, cellX, cellY, COLOR_DEAD);
-            }
-        }
-    }
-#endif // !TEXTPRINT
-
-#ifdef TEXTPRINT
-    for (int cellx = 0; cellx < horizontal; cellx++)
-    {
-        for (int celly = 0; celly < vertical; celly++)
-        {
-            if (current_state[celly][cellx] == ALIVE)
-            {
-                if ((cellx == horizontal - 1 || cellx == 0) || (celly == vertical - 1 || celly == 0))
-                {
-                    cout << 'x';
-                }
-                else {
-                    cout << 'x';
-                }
-            }
-            else {
-                cout << '-';
-            }
-        }
-        cout << endl;
-    }
-    cout << endl;
-#endif // TEXTPRINT
-
-    ReleaseDC(myconsole, mydc);
+//#ifdef TEXT // for som reason this compiles WITHOUT the define too, with any setting
+//    for (int cellx = 0; cellx < horizontal; cellx++)
+//    {
+//        for (int celly = 0; celly < vertical; celly++)
+//        {
+//            if (current_state[celly][cellx] == ALIVE)
+//            {
+//                if ((cellx == horizontal - 1 || cellx == 0) || (celly == vertical - 1 || celly == 0))
+//                {
+//                    cout << 'x';
+//                }
+//                else {
+//                    cout << 'x';
+//                }
+//            }
+//            else {
+//                cout << '-';
+//            }
+//        }
+//        cout << endl;
+//    }
+//    cout << endl;
+//#endif // TEXT
 }
 
 bool cellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vertical, bool looping = false) {
@@ -506,7 +488,7 @@ int main()
         swap(old_state, current_state); // 'save' the old state without copying
         updateStateMatrix(old_state, current_state, horizontal, vertical, true);
 
-        updateScreen(old_state, current_state, horizontal, vertical);
+        updateScreen(current_state, horizontal, vertical, old_state, false);
 #ifndef NODELAY
         Sleep(1500);
 #endif // NODELAY
