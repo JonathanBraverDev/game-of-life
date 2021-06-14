@@ -2,6 +2,7 @@
 #include <iostream>
 #include <ctime>
 #include <cstdlib>
+#include <thread>
 
 #define N_GLIDER
 // GLIDER will start will a screen full of gliders
@@ -13,6 +14,8 @@
 // NODELAY will disable the sleep between renders
 #define N_BRUTAL
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
+#define MULTIRENDER
+// MULTIRENDER will split rendering into a few columns to speed up rendering
 
 using namespace std;
 
@@ -52,14 +55,14 @@ void ShowConsoleCursor(bool showFlag)
     SetConsoleCursorInfo(out, &cursorInfo);
 }
 
-void updateScreen(bool** old_state, bool** current_state, int horizontal, int vertical) {
+#ifdef MULTIRENDER
+static void renderThread(bool** old_state, bool** current_state, int vertical, int begin, int end) {
     //Get a console handle
     HWND myconsole = GetConsoleWindow();
     //Get a handle to device context
     HDC mydc = GetDC(myconsole);
 
-
-    for (int cellX = 0; cellX < horizontal; cellX++)
+    for (int cellX = begin; cellX < end; cellX++)
     {
         for (int cellY = 0; cellY < vertical; cellY++)
         {
@@ -76,6 +79,49 @@ void updateScreen(bool** old_state, bool** current_state, int horizontal, int ve
     }
 
     ReleaseDC(myconsole, mydc);
+}
+#endif // MULTIRENDER
+
+
+void updateScreen(bool** old_state, bool** current_state, int horizontal, int vertical) {
+    unsigned int numOfThreads = thread::hardware_concurrency();
+    thread* threads = new thread [numOfThreads];
+    const unsigned int renderZoneSize = horizontal / numOfThreads;
+    unsigned int firstOffset = horizontal - renderZoneSize * numOfThreads;
+    int begin = 0;
+    int end = firstOffset + renderZoneSize; // the first zone takes the rounding error
+    
+    threads[0] = thread(renderThread, old_state, current_state, vertical, begin, end);
+
+    for (int created = 1; created < numOfThreads; created++) // !IMPORTANT! set to 1 to skip the first thread creation
+    {
+        begin = end;
+        end += renderZoneSize;
+        threads[created] = thread(renderThread, old_state, current_state, vertical, begin, end);
+    }
+
+    for (int joined = 0; joined < numOfThreads; joined++) // !IMPORTANT! set to 1 to skip the first thread creation
+    {
+        threads[joined].join();
+    }
+
+#ifndef MULTIRENDER
+    for (int cellX = 0; cellX < horizontal; cellX++)
+    {
+        for (int cellY = 0; cellY < vertical; cellY++)
+        {
+            if (old_state[cellX][cellY] != current_state[cellX][cellY]) { // will not update uncahnged cells
+                if (current_state[cellX][cellY] == ALIVE)
+                {
+                    SetPixel(mydc, cellX, cellY, COLOR_ALIVE);
+                }
+                else {
+                    SetPixel(mydc, cellX, cellY, COLOR_DEAD);
+                }
+            }
+        }
+    }
+#endif // !MULTIRENDER
 }
 
 void updateScreen(bool** current_state, int horizontal, int vertical) {
@@ -458,7 +504,7 @@ int main()
     while (!endOfCycle(old_state, current_state, horizontal, vertical))
     {
         swap(old_state, current_state); // 'save' the old state without copying
-        updateStateMatrix(old_state, current_state, horizontal, vertical);
+        updateStateMatrix(old_state, current_state, horizontal, vertical, true);
 
         updateScreen(old_state, current_state, horizontal, vertical);
 #ifndef NODELAY
