@@ -4,22 +4,27 @@
 #include <cstdlib>
 #include <thread>
 
-#define N_GLIDER
+#define RANDOM
+// RANDOM will start with a randomly genereted first generation
 // GLIDER will start will a screen full of gliders
 #define FHD
 // FHD will force the screen to 1080p, windows scaling fucks up the automatic detection
+// NATIVE will allow adapting to the resolution of the display
 #define NODELAY
+// PATIENT will wait before rendering each genereation
 // NODELAY will disable the sleep between renders
-#define N_BRUTAL
+#define BRUTAL
+// EFFICENT will run until the activity drops low enogh to be boring
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
 #define MULTIRENDER
 // LINEAR will render the scren as a big chunk
-// MULTIRENDER will split rendering into a few columns to speed up rendering
-// TEXT will print the grid in text instead of pixels
+// MULTIRENDER will split rendering into a few columns
+// TEXTPRINT will print the grid in text instead of pixels (recommended to reduce render rez)
 
 using namespace std;
-
-constexpr auto INITIAL_LIFE_RATIO = 10;
+#ifdef RANDOM
+constexpr auto INITIAL_LIFE_RATIO = 25; // this is an INVERSE (aka 1 is EVERY pixel)
+#endif // RANDOM
 constexpr auto ALIVE = true;
 constexpr auto DEAD = false;
 
@@ -130,29 +135,29 @@ void updateScreen(bool** current_state, int horizontal, int vertical, bool** old
     }
 #endif // LINEAR
 
-//#ifdef TEXT // for som reason this compiles WITHOUT the define too, with any setting
-//    for (int cellx = 0; cellx < horizontal; cellx++)
-//    {
-//        for (int celly = 0; celly < vertical; celly++)
-//        {
-//            if (current_state[celly][cellx] == ALIVE)
-//            {
-//                if ((cellx == horizontal - 1 || cellx == 0) || (celly == vertical - 1 || celly == 0))
-//                {
-//                    cout << 'x';
-//                }
-//                else {
-//                    cout << 'x';
-//                }
-//            }
-//            else {
-//                cout << '-';
-//            }
-//        }
-//        cout << endl;
-//    }
-//    cout << endl;
-//#endif // TEXT
+#ifdef TEXTPRINT
+    for (int cellx = 0; cellx < horizontal; cellx++)
+    {
+        for (int celly = 0; celly < vertical; celly++)
+        {
+            if (current_state[celly][cellx] == ALIVE)
+            {
+                if ((cellx == horizontal - 1 || cellx == 0) || (celly == vertical - 1 || celly == 0))
+                {
+                    cout << 'x';
+                }
+                else {
+                    cout << 'x';
+                }
+            }
+            else {
+                cout << '-';
+            }
+        }
+        cout << endl;
+    }
+    cout << endl;
+#endif // TEXTPRINT
 }
 
 bool cellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vertical, bool looping = false) {
@@ -347,12 +352,12 @@ void deleteMatrix(T** matrix) {
 bool endOfCycle(bool** old_state, bool** current_state, int horizontal, int vertical) {
     bool result = false;
 
-#ifndef BRUTAL
+#ifdef EFFICENT
     if (low_Activity(old_state, current_state, horizontal, vertical)) {
         cout << "low activity" << endl;
         result = true;
     }
-#endif // !BRUTAL
+#endif // EFFICENT
 
 #ifdef BRUTAL
     if (extinction(current_state, horizontal, vertical)) {
@@ -383,7 +388,10 @@ int main()
     // get screen rezsolution
     int horizontal = 0;
     int vertical = 0;
+
+#ifdef NATIVE
     GetDesktopResolution(horizontal, vertical);
+#endif // NATIVE
 
 #ifdef FHD
     horizontal = 1920;
@@ -393,7 +401,7 @@ int main()
     bool** old_state = createMatrix<bool>(horizontal, vertical);
     bool** current_state = createMatrix<bool>(horizontal, vertical);
 
-#ifndef GLIDER
+#ifdef RANDOM
     // randomize the first generation
     srand(time(0));
     for (int cellX = 0; cellX < horizontal; cellX++)
@@ -410,7 +418,7 @@ int main()
             }
         }
     }
-#endif // !GLIDER
+#endif // RANDOM
 
 #ifdef GLIDER
      //initialize an empty screen
@@ -479,9 +487,9 @@ int main()
 
     // initial render
     updateScreen(current_state, horizontal, vertical);
-#ifndef NODELAY
+#ifdef PATIENT
     Sleep(1500);
-#endif // NODELAY
+#endif // PATIENT
 
     while (!endOfCycle(old_state, current_state, horizontal, vertical))
     {
@@ -489,9 +497,9 @@ int main()
         updateStateMatrix(old_state, current_state, horizontal, vertical, true);
 
         updateScreen(current_state, horizontal, vertical, old_state, false);
-#ifndef NODELAY
+#ifdef PATIENT
         Sleep(1500);
-#endif // NODELAY
+#endif // PATIENT
     }
 
     deleteMatrix<bool>(old_state);
