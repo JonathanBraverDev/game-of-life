@@ -13,17 +13,21 @@
 #define NODELAY
 // PATIENT will wait before rendering each genereation
 // NODELAY will disable the sleep between renders
-#define BRUTAL
+#define EFFICENT
 // EFFICENT will run until the activity drops low enogh to be boring
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
 #define MULTIRENDER
 // LINEAR will render the scren as a big chunk
 // MULTIRENDER will split rendering into a few columns
 // TEXTPRINT will print the grid in text instead of pixels (recommended to reduce render rez)
+#define DOOMED
+// DOOMED will end the simulation after one iteration ends
+// UNCERTAIN will give the user a choise
+// RESURGENT will endlessly reset the simulation without confirmation
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 25; // this is an INVERSE (aka 1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 100; // this is an INVERSE (aka 1 is EVERY pixel)
 #endif // RANDOM
 constexpr auto ALIVE = true;
 constexpr auto DEAD = false;
@@ -158,6 +162,10 @@ void updateScreen(bool** current_state, int horizontal, int vertical, bool** old
     }
     cout << endl;
 #endif // TEXTPRINT
+
+#ifdef PATIENT
+    Sleep(1500);
+#endif // PATIENT
 }
 
 bool cellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vertical, bool looping = false) {
@@ -361,11 +369,11 @@ bool endOfCycle(bool** old_state, bool** current_state, int horizontal, int vert
 
 #ifdef BRUTAL
     if (extinction(current_state, horizontal, vertical)) {
-        cout << "ded" << endl;
+        cout << "life has beed wiped out" << endl;
         result = true;
-}
+    }
     else if (stasis(old_state, current_state, horizontal, vertical)) { // this is effectivly impossible
-        cout << "stasis" << endl;
+        cout << "a static state has beed achived" << endl;
         result = true;
     }
 #endif // BRUTAL
@@ -373,34 +381,8 @@ bool endOfCycle(bool** old_state, bool** current_state, int horizontal, int vert
     return result;
 }
 
-
-
-
-int main()
-{
-    // sets makes the window fullscreen
-    SetConsoleDisplayMode(GetStdHandle(STD_OUTPUT_HANDLE), CONSOLE_FULLSCREEN_MODE, 0);
-    ShowScrollBar(GetConsoleWindow(), SB_VERT, 0);
-    ShowConsoleCursor(false);
-    Sleep(1500);
-
-
-    // get screen rezsolution
-    int horizontal = 0;
-    int vertical = 0;
-
-#ifdef NATIVE
-    GetDesktopResolution(horizontal, vertical);
-#endif // NATIVE
-
-#ifdef FHD
-    horizontal = 1920;
-    vertical = 1080;
-#endif // FHD
-
-    bool** old_state = createMatrix<bool>(horizontal, vertical);
-    bool** current_state = createMatrix<bool>(horizontal, vertical);
-
+// fil the first generation according to selecte ruels
+void initialize(bool** current_state, int horizontal, int vertical) {
 #ifdef RANDOM
     // randomize the first generation
     srand(time(0));
@@ -421,7 +403,7 @@ int main()
 #endif // RANDOM
 
 #ifdef GLIDER
-     //initialize an empty screen
+    //initialize an empty screen
     for (int cellX = 0; cellX < horizontal; cellX++)
     {
         for (int cellY = 0; cellY < vertical; cellY++)
@@ -484,23 +466,88 @@ int main()
     }
 #endif // GLIDER
 
+}
 
-    // initial render
-    updateScreen(current_state, horizontal, vertical);
-#ifdef PATIENT
-    Sleep(1500);
-#endif // PATIENT
-
-    while (!endOfCycle(old_state, current_state, horizontal, vertical))
+// handle responce options
+bool handleResponse(char response) {
+    bool result = false;
+    if (response == 'y' or response == 'Y')
     {
-        swap(old_state, current_state); // 'save' the old state without copying
-        updateStateMatrix(old_state, current_state, horizontal, vertical, true);
-
-        updateScreen(current_state, horizontal, vertical, old_state, false);
-#ifdef PATIENT
-        Sleep(1500);
-#endif // PATIENT
+        result = true;
     }
+
+    return result;
+}
+
+
+
+
+int main()
+{
+    // sets makes the window fullscreen
+    SetConsoleDisplayMode(GetStdHandle(STD_OUTPUT_HANDLE), CONSOLE_FULLSCREEN_MODE, 0);
+    ShowScrollBar(GetConsoleWindow(), SB_VERT, 0);
+    ShowConsoleCursor(false);
+    Sleep(1500);
+
+
+    // get screen rezsolution
+    int horizontal = 0;
+    int vertical = 0;
+
+#ifdef NATIVE
+    GetDesktopResolution(horizontal, vertical);
+#endif // NATIVE
+
+#ifdef FHD
+    horizontal = 1920;
+    vertical = 1080;
+#endif // FHD
+
+#ifdef TEXTPRINT
+    horizontal /= 8; // adapt to fit text on screen
+    vertical /= 8;
+#endif // TEXTPRINT
+
+
+    bool** old_state = createMatrix<bool>(horizontal, vertical);
+    bool** current_state = createMatrix<bool>(horizontal, vertical);
+    char response = 'y';
+
+#ifdef RESURGENT
+    while (true)
+#endif // RESURGENT
+#ifdef UNCERTAIN
+    while (handleResponse(response) != false)
+#endif // UNCERTAIN
+
+#ifndef DOOMED
+    {
+#endif // DOOMED
+
+        // fill the sceeen according to settings
+        initialize(current_state, horizontal, vertical);
+
+        // initial render
+        updateScreen(current_state, horizontal, vertical);
+
+        while (!endOfCycle(old_state, current_state, horizontal, vertical))
+        {
+            swap(old_state, current_state); // 'save' the old state without copying
+            updateStateMatrix(old_state, current_state, horizontal, vertical, true);
+
+            updateScreen(current_state, horizontal, vertical, old_state, false);
+        }
+
+#ifdef UNCERTAIN
+        cout << "restart? (y/n)" << endl;
+        cin >> response;
+#endif // UNCERTAIN
+
+#ifndef DOOMED
+    }
+#endif // DOOMED
+
 
     deleteMatrix<bool>(old_state);
     deleteMatrix<bool>(current_state);
