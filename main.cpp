@@ -17,10 +17,10 @@
 #define BRUTAL
 // EFFICENT will run until the activity drops low enogh to be boring
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
-#define MULTIRENDER
+#define TEXTPRINT
 // LINEAR will render the scren as a big chunk
 // MULTIRENDER will split rendering into a few columns
-// TEXTPRINT will print the grid in text instead of pixels (recommended to reduce render rez)
+// TEXTPRINT will print the grid in text instead of pixels at significantly reduced rez and speed
 #define UNCERTAIN
 // DOOMED will end the simulation after one iteration ends
 // UNCERTAIN will give the user a choise
@@ -246,19 +246,13 @@ void updateScreen(bool** current_state, int horizontal, int vertical, bool** old
 #endif // LINEAR
 
 #ifdef TEXTPRINT
-    for (int cellx = 0; cellx < horizontal; cellx++)
+    for (int celly = 0; celly < vertical; celly++) // y dominaant for newlines
     {
-        for (int celly = 0; celly < vertical; celly++)
+        for (int cellx = 0; cellx < horizontal; cellx++)
         {
-            if (current_state[celly][cellx] == ALIVE)
+            if (current_state[cellx][celly] == ALIVE)
             {
-                if ((cellx == horizontal - 1 || cellx == 0) || (celly == vertical - 1 || celly == 0))
-                {
-                    cout << 'x';
-                }
-                else {
-                    cout << 'x';
-                }
+                cout << 'x';
             }
             else {
                 cout << '-';
@@ -269,9 +263,9 @@ void updateScreen(bool** current_state, int horizontal, int vertical, bool** old
     cout << endl;
 #endif // TEXTPRINT
 
-#ifdef PATIENT
+#if defined(PATIENT) || defined(TEXTPRINT)
     Sleep(1500);
-#endif // PATIENT
+#endif // defined(PATIENT) || defined(TEXTPRINT)
 }
 
 bool cellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vertical, bool looping = false) {
@@ -598,15 +592,10 @@ int main()
     vertical = 1080;
 #endif // FHD
 
-#ifdef TEXTPRINT
-    horizontal /= 8;
-    vertical /= 8;
-#endif // TEXTPRINT
-
 
 #ifdef TEXTPRINT
-    horizontal /= 8; // adapt to fit text on screen
-    vertical /= 8;
+    horizontal /= 40; // adapt to a managable size
+    vertical /= 40;
 #endif // TEXTPRINT
 
 
