@@ -3,6 +3,7 @@
 #include <ctime>
 #include <cstdlib>
 #include <thread>
+#include <vector>
 
 #define RANDOM
 // RANDOM will start with a randomly genereted first generation
@@ -13,29 +14,134 @@
 #define NODELAY
 // PATIENT will wait before rendering each genereation
 // NODELAY will disable the sleep between renders
-#define EFFICENT
+#define BRUTAL
 // EFFICENT will run until the activity drops low enogh to be boring
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
 #define MULTIRENDER
 // LINEAR will render the scren as a big chunk
 // MULTIRENDER will split rendering into a few columns
 // TEXTPRINT will print the grid in text instead of pixels (recommended to reduce render rez)
-#define DOOMED
+#define UNCERTAIN
 // DOOMED will end the simulation after one iteration ends
 // UNCERTAIN will give the user a choise
 // RESURGENT will endlessly reset the simulation without confirmation
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 100; // this is an INVERSE (aka 1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 25; // this is an INVERSE (aka 1 is EVERY pixel)
 #endif // RANDOM
 constexpr auto ALIVE = true;
 constexpr auto DEAD = false;
 
-//Set colors
+// Set colors
 const COLORREF COLOR_ALIVE = RGB(255, 255, 255);
 const COLORREF COLOR_DEAD = RGB(0, 0, 0);
 const COLORREF COLOR_RED = RGB(255, 0, 0);
+
+// Define structures
+struct snapshot
+{   
+    int horizontal;
+    int vertical;
+    bool** local_state;
+};
+
+struct entry
+{
+    int maxHorizontal;
+    int maxVertical;
+    snapshot* snapshots;
+};
+
+struct sector
+{
+    int horizontalStart;
+    int horizontalEnd;
+    int verticalStart;
+    int verticalEnd;
+};
+
+
+// creates a secors with the given limits
+sector createSector(int horizontalStart, int horizontalEnd, int verticalStart, int verticalEnd) {
+    sector newSector{};
+    newSector.horizontalStart = horizontalStart;
+    newSector.horizontalEnd = horizontalEnd;
+    newSector.verticalStart = horizontalStart;
+    newSector.verticalEnd = verticalEnd;
+
+    return newSector;
+}
+
+
+// creates a single block matrix allocation and splits it into arrays
+template <typename T>
+T** createMatrix(int horizontal, int  vertical) {
+    T** matrix = new T * [horizontal];
+    matrix[0] = new T[horizontal * vertical];
+    for (int cellX = 1; cellX < horizontal; cellX++) {
+        matrix[cellX] = matrix[0] + cellX * vertical;
+    }
+
+    return matrix;
+}
+
+
+// returns a smaller matrix of an area in the state
+bool** createLocalState(bool** state, int horizontalStart, int horizontalEnd, int verticalStart, int verticalEnd) {
+    bool** local_state = createMatrix<bool>(horizontalEnd - horizontalStart, verticalEnd - horizontalStart);
+
+    for (int cellX = horizontalStart; cellX < horizontalEnd; cellX++)
+    {
+        for (int cellY = verticalStart; cellY < verticalEnd; cellY++)
+        {
+            local_state[cellX - horizontalStart][cellY - verticalStart] = state[cellX][cellY];
+        }
+    }
+
+    return local_state;
+}
+
+// returns a smaller matrix of an area in the state
+bool** createLocalState(bool** state, sector sector) {
+    bool** local_state = createMatrix<bool>(sector.horizontalEnd - sector.horizontalStart, sector.verticalEnd - sector.horizontalStart);
+
+    for (int cellX = sector.horizontalStart; cellX < sector.horizontalEnd; cellX++)
+    {
+        for (int cellY = sector.verticalStart; cellY < sector.verticalEnd; cellY++)
+        {
+            local_state[cellX - sector.horizontalStart][cellY - sector.verticalStart] = state[cellX][cellY];
+        }
+    }
+
+    return local_state;
+}
+
+
+// returns a snapshot of a cestion of the state within the given coprdinates
+snapshot createSnapshot(bool** state, int horizontalStart, int horizontalEnd, int verticalStart, int verticalEnd) {
+    snapshot newSnapshot{};
+    newSnapshot.local_state = createLocalState(state, horizontalStart, horizontalEnd, verticalStart, verticalEnd);
+    newSnapshot.horizontal = horizontalEnd - horizontalStart;
+    newSnapshot.vertical = verticalEnd - verticalStart;
+
+    return newSnapshot;
+}
+
+// returns a snapshot of a cestion of the state within the given coprdinates
+snapshot createSnapshot(bool** state, sector sector) {
+    snapshot newSnapshot{};
+    newSnapshot.local_state = createLocalState(state, sector.horizontalStart, sector.horizontalEnd, sector.verticalStart, sector.verticalEnd);
+    newSnapshot.horizontal = sector.horizontalEnd - sector.horizontalStart;
+    newSnapshot.vertical = sector.verticalEnd - sector.verticalStart;
+
+    return newSnapshot;
+}
+
+
+//sector* findLifeForm(bool** state, int horizontal, int vertical) {
+//
+//}
 
 
 // Get the horizontal and vertical screen sizes in pixel
@@ -337,18 +443,6 @@ bool low_Activity(bool** old_state, bool** current_state, int horizontal, int ve
     return result;
 }
 
-// creates a single block matrix allocation and splits it into arrays
-template <typename T>
-T** createMatrix(int horizontal, int  vertical) {
-    T** matrix = new T * [horizontal];
-    matrix[0] = new T[horizontal * vertical];
-    for (int cellX = 1; cellX < horizontal; cellX++) {
-        matrix[cellX] = matrix[0] + cellX * vertical;
-    }
-
-    return matrix;
-}
-
 // deletes single block allocated matrixes 
 template <typename T>
 void deleteMatrix(T** matrix) {
@@ -505,6 +599,12 @@ int main()
 #endif // FHD
 
 #ifdef TEXTPRINT
+    horizontal /= 8;
+    vertical /= 8;
+#endif // TEXTPRINT
+
+
+#ifdef TEXTPRINT
     horizontal /= 8; // adapt to fit text on screen
     vertical /= 8;
 #endif // TEXTPRINT
@@ -518,34 +618,34 @@ int main()
     while (true)
 #endif // RESURGENT
 #ifdef UNCERTAIN
-    while (handleResponse(response) != false)
+        while (handleResponse(response) != false)
 #endif // UNCERTAIN
 
 #ifndef DOOMED
-    {
+        {
 #endif // DOOMED
 
-        // fill the sceeen according to settings
-        initialize(current_state, horizontal, vertical);
+            // fill the sceeen according to settings
+            initialize(current_state, horizontal, vertical);
 
-        // initial render
-        updateScreen(current_state, horizontal, vertical);
+            // initial render
+            updateScreen(current_state, horizontal, vertical);
 
-        while (!endOfCycle(old_state, current_state, horizontal, vertical))
-        {
-            swap(old_state, current_state); // 'save' the old state without copying
-            updateStateMatrix(old_state, current_state, horizontal, vertical, true);
+            while (!endOfCycle(old_state, current_state, horizontal, vertical))
+            {
+                swap(old_state, current_state); // 'save' the old state without copying
+                updateStateMatrix(old_state, current_state, horizontal, vertical, true);
 
-            updateScreen(current_state, horizontal, vertical, old_state, false);
-        }
+                updateScreen(current_state, horizontal, vertical, old_state, false);
+            }
 
 #ifdef UNCERTAIN
-        cout << "restart? (y/n)" << endl;
-        cin >> response;
+            cout << "restart? (y/n)" << endl;
+            cin >> response;
 #endif // UNCERTAIN
 
 #ifndef DOOMED
-    }
+        }
 #endif // DOOMED
 
 
