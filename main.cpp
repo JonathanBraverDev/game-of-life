@@ -5,7 +5,7 @@
 #include <thread>
 #include <vector>
 
-#define RANDOM
+#define GLIDER
 // RANDOM will start with a randomly genereted first generation
 // GLIDER will start will a screen full of gliders
 #define FHD
@@ -505,6 +505,11 @@ void initialize(bool** current_state, int horizontal, int vertical) {
     int sizeX = 40;
     int sizeY = 40;
     int state = 0;
+
+#ifdef TEXTPRINT
+    sizeX /= 4;
+    sizeY /= 4;
+#endif // TEXTPRINT
 
     for (offsetX = 0; offsetX + sizeX <= horizontal; offsetX += sizeX)
     {
