@@ -5,7 +5,7 @@
 #include <thread>
 #include <vector>
 
-#define GLIDER
+#define RANDOM
 // RANDOM will start with a randomly genereted first generation
 // GLIDER will start will a screen full of gliders
 #define FHD
@@ -51,6 +51,12 @@ struct entry
     int maxHorizontal;
     int maxVertical;
     snapshot* snapshots;
+};
+
+struct point
+{
+    int horizontal;
+    int vertical;
 };
 
 struct sector
@@ -138,10 +144,141 @@ snapshot createSnapshot(bool** state, sector sector) {
     return newSnapshot;
 }
 
+void findCluster(bool** state_copy, int horizontal, int vertical, int horizontalStart, int verticalStart, vector<point>& current_cluster) {
+    point currentPoint = point{ horizontalStart, verticalStart };
+    state_copy[horizontalStart][verticalStart] = DEAD; // marking saved cells as dead
 
-//sector* findLifeForm(bool** state, int horizontal, int vertical) {
-//
-//}
+    vector<point> neighbors;
+
+    // counting neighbors, looping edges
+    if (horizontalStart > 0 && state_copy[horizontalStart - 1][verticalStart] == ALIVE) { // left 
+        neighbors.push_back({ horizontalStart - 1,  verticalStart });
+    }
+    else if (horizontalStart == 0 && state_copy[horizontal - 1][verticalStart] == ALIVE) // looping left
+    {
+        neighbors.push_back({ horizontal - 1,  verticalStart });
+    }
+
+    if (verticalStart > 0 && state_copy[horizontalStart][verticalStart - 1] == ALIVE) { // up
+        neighbors.push_back({ horizontalStart,  verticalStart - 1 });
+    }
+    else if (verticalStart == 0 && state_copy[horizontalStart][vertical - 1] == ALIVE) // looping up
+    {
+        neighbors.push_back({ horizontalStart,  vertical - 1 });
+    }
+
+    if (horizontalStart < horizontal - 1 && state_copy[horizontalStart + 1][verticalStart] == ALIVE) { // right
+        neighbors.push_back({ horizontalStart,  vertical - 1 });
+    }
+    else if (horizontalStart == horizontal - 1 && state_copy[0][verticalStart] == ALIVE) // looping right
+    {
+        neighbors.push_back({ horizontalStart,  vertical - 1 });
+    }
+
+    if (verticalStart < vertical - 1 && state_copy[horizontalStart][verticalStart + 1] == ALIVE) { // down
+        neighbors.push_back({ horizontalStart,  verticalStart + 1 });
+    }
+    else if (verticalStart == vertical - 1 && state_copy[horizontalStart][0] == ALIVE) // looping down
+    {
+        neighbors.push_back({ horizontalStart,  0});
+    }
+
+    if (horizontalStart > 0 && verticalStart > 0
+        && state_copy[horizontalStart - 1][verticalStart - 1] == ALIVE) { // top left
+        neighbors.push_back({ horizontalStart - 1,  verticalStart - 1 });
+    }
+    else if (horizontalStart == 0 && verticalStart > 0 // x out of bounds
+        && state_copy[horizontal - 1][verticalStart - 1] == ALIVE)
+    {
+        neighbors.push_back({ horizontal - 1,  verticalStart - 1 });
+    }
+    else if (horizontalStart > 0 && verticalStart == 0 // y out of bounds
+        && state_copy[horizontalStart - 1][vertical - 1] == ALIVE)
+    {
+        neighbors.push_back({ horizontalStart - 1,  vertical - 1 });
+    }
+    else if (horizontalStart == 0 && verticalStart == 0 // both out of bounds
+        && state_copy[horizontal - 1][vertical - 1] == ALIVE)
+    {
+        neighbors.push_back({ horizontal - 1,  vertical - 1 });
+    }
+
+    if (horizontalStart < horizontal - 1 && verticalStart < vertical - 1 // bottom right
+        && state_copy[horizontalStart + 1][verticalStart + 1] == ALIVE) {
+        neighbors.push_back({ horizontalStart + 1,  verticalStart + 1 });
+    }
+    else if (horizontalStart == horizontal - 1 && verticalStart < vertical - 1 // x out of bounds
+        && state_copy[0][verticalStart + 1] == ALIVE)
+    {
+        neighbors.push_back({ 0,  verticalStart + 1 });
+    }
+    else if (horizontalStart < horizontal - 1 && verticalStart == vertical - 1 // y out of bounds
+        && state_copy[horizontalStart + 1][0] == ALIVE)
+    {
+        neighbors.push_back({ horizontalStart + 1,  0 });
+    }
+    else if (horizontalStart == horizontal - 1 && verticalStart == vertical - 1 // both out of bounds
+        && state_copy[0][0] == ALIVE)
+    {
+        neighbors.push_back({ 0,  0 });
+    }
+
+    if (horizontalStart < horizontal - 1 && verticalStart > 0 // top right
+        && state_copy[horizontalStart + 1][verticalStart - 1] == 1) {
+        neighbors.push_back({ horizontalStart + 1,  verticalStart - 1 });
+    }
+    else if (horizontalStart == horizontal - 1 && verticalStart > 0 // x out of bounds
+        && state_copy[0][verticalStart - 1] == ALIVE)
+    {
+        neighbors.push_back({ 0,  verticalStart - 1 });
+    }
+    else if (horizontalStart < horizontal - 1 && verticalStart == 0 // y out of bounds
+        && state_copy[horizontalStart + 1][vertical - 1] == ALIVE)
+    {
+        neighbors.push_back({ horizontalStart + 1,  vertical - 1 });
+    }
+    else if (horizontalStart == horizontal - 1 && verticalStart == 0 // both out of bounds
+        && state_copy[0][vertical - 1] == ALIVE)
+    {
+        neighbors.push_back({ 0,  vertical - 1 });
+    }
+
+    if (horizontalStart > 0 && verticalStart < vertical - 1 // bottom left
+        && state_copy[horizontalStart - 1][verticalStart + 1] == 1) {
+        neighbors.push_back({ horizontalStart - 1,  verticalStart + 1 });
+    }
+    else if (horizontalStart == 0 && verticalStart < vertical - 1 // x out of bounds
+        && state_copy[horizontal - 1][verticalStart + 1] == ALIVE)
+    {
+        neighbors.push_back({ horizontal - 1,  verticalStart + 1 });
+    } 
+    else if (horizontalStart > 0 && verticalStart == vertical - 1 // y out of bounds 
+        && state_copy[horizontalStart - 1][0] == ALIVE)
+    {
+        neighbors.push_back({ horizontalStart - 1, 0 });
+    }
+    else if (horizontalStart == 0 && verticalStart == vertical - 1 // both out of bounds 
+        && state_copy[horizontal - 1][0] == ALIVE)
+    {
+        neighbors.push_back({ horizontal - 1,  0 });
+    }
+    
+    while (!neighbors.empty())
+    {
+        // recourse using a neigboring live cells' location
+        findCluster(state_copy, horizontal, vertical, neighbors.back().horizontal, neighbors.back().vertical, current_cluster);
+        neighbors.pop_back(); // remove the last value
+    }
+}
+
+
+vector<vector<sector>> findClusters(bool** state, int horizontal, int vertical) {
+    bool** tmp = createMatrix<bool>(horizontal, vertical);
+    copy(state, state, tmp);
+    vector<vector<sector>> clusters;
+
+    return clusters;
+}
 
 
 // Get the horizontal and vertical screen sizes in pixel
@@ -621,9 +758,17 @@ int main()
 
             // fill the sceeen according to settings
             initialize(current_state, horizontal, vertical);
+            current_state[0][0] = ALIVE;
+            current_state[0][1] = ALIVE;
+            current_state[1][1] = ALIVE;
 
             // initial render
             updateScreen(current_state, horizontal, vertical);
+
+            bool** tmp = createMatrix<bool>(horizontal, vertical);
+            vector<point> cluster;
+            copy(current_state, current_state + sizeof(current_state), tmp);
+            findCluster(tmp, horizontal, vertical, 0, 0, cluster);
 
             while (!endOfCycle(old_state, current_state, horizontal, vertical))
             {
