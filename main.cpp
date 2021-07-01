@@ -28,7 +28,7 @@
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 25; // this is an INVERSE (aka 1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 10; // this is an INVERSE (aka 1 is EVERY pixel)
 #endif // RANDOM
 constexpr auto ALIVE = true;
 constexpr auto DEAD = false;
@@ -37,6 +37,7 @@ constexpr auto DEAD = false;
 const COLORREF COLOR_ALIVE = RGB(255, 255, 255);
 const COLORREF COLOR_DEAD = RGB(0, 0, 0);
 const COLORREF COLOR_RED = RGB(255, 0, 0);
+const COLORREF COLOR_GREEN = RGB(0, 255, 0);
 
 // Define structures
 struct snapshot
@@ -161,8 +162,16 @@ snapshot createSnapshot(bool** state, sector sector) {
     return newSnapshot;
 }
 
+// finds a cluster of pointds connected to the given coordinates and saves them to the given vector
 void findCluster(bool** state_copy, int horizontal, int vertical, int horizontalStart, int verticalStart, vector<point>& current_cluster) {
+
+    if (state_copy[horizontalStart][verticalStart] == DEAD) // prevents 'double tagging' a cell based on the order they recurse at, still calls the function tho
+    {
+        return;
+    }
+
     point currentPoint = point{ horizontalStart, verticalStart };
+    current_cluster.push_back(currentPoint);
     state_copy[horizontalStart][verticalStart] = DEAD; // marking saved cells as dead
 
     vector<point> neighbors;
@@ -289,12 +298,25 @@ void findCluster(bool** state_copy, int horizontal, int vertical, int horizontal
 }
 
 
-vector<vector<sector>> findClusters(bool** state, int horizontal, int vertical) {
-    bool** tmp = createMatrix<bool>(horizontal, vertical);
-    copy(state, state, tmp);
-    vector<vector<sector>> clusters;
+// finds all clusters in the given state and saves them to the given vector
+void findClusters(bool** state, int horizontal, int vertical, vector<vector<point>>& clusters) {
 
-    return clusters;
+    bool** state_copy = copyMatrix(state, horizontal, vertical);
+
+    for (int cellX = 0; cellX < horizontal; cellX++)
+    {
+        for (int cellY = 0; cellY < vertical; cellY++)
+        {
+            if (state_copy[cellX][cellY] == ALIVE)
+            {
+                clusters.push_back(vector<point>{});
+                findCluster(state_copy, horizontal, vertical, cellX, cellY, clusters.back());
+            }
+        }
+    }
+
+    // DELETE vectors with size < 3
+    // i cant get it to work.
 }
 
 
@@ -783,8 +805,8 @@ int main()
             updateScreen(current_state, horizontal, vertical);
 
             bool** tmp = copyMatrix(current_state, horizontal, vertical);
-            vector<point> cluster;
-            findCluster(tmp, horizontal, vertical, 0, 0, cluster);
+            vector<vector<point>> clusters;
+            findClusters(tmp, horizontal, vertical, clusters);
 
             while (!endOfCycle(old_state, current_state, horizontal, vertical))
             {
