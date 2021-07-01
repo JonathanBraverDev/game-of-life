@@ -40,7 +40,7 @@ const COLORREF COLOR_RED = RGB(255, 0, 0);
 
 // Define structures
 struct snapshot
-{   
+{
     int horizontal;
     int vertical;
     bool** local_state;
@@ -90,6 +90,23 @@ T** createMatrix(int horizontal, int  vertical) {
     }
 
     return matrix;
+}
+
+// copies an existing matrix, given size is of the original
+template <typename T>
+T** copyMatrix(T** original, int horizontal, int  vertical) {
+    T** newMatrix = new T * [horizontal];
+    newMatrix[0] = new T[horizontal * vertical];
+    for (int cellX = 1; cellX < horizontal; cellX++) {
+        newMatrix[cellX] = newMatrix[0] + cellX * vertical;
+    }
+
+    for (int cellX = 0; cellX < horizontal; cellX++)
+    {
+        copy(original[cellX], original[cellX] + vertical, newMatrix[cellX]);
+    }
+
+    return newMatrix;
 }
 
 
@@ -180,7 +197,7 @@ void findCluster(bool** state_copy, int horizontal, int vertical, int horizontal
     }
     else if (verticalStart == vertical - 1 && state_copy[horizontalStart][0] == ALIVE) // looping down
     {
-        neighbors.push_back({ horizontalStart,  0});
+        neighbors.push_back({ horizontalStart,  0 });
     }
 
     if (horizontalStart > 0 && verticalStart > 0
@@ -251,7 +268,7 @@ void findCluster(bool** state_copy, int horizontal, int vertical, int horizontal
         && state_copy[horizontal - 1][verticalStart + 1] == ALIVE)
     {
         neighbors.push_back({ horizontal - 1,  verticalStart + 1 });
-    } 
+    }
     else if (horizontalStart > 0 && verticalStart == vertical - 1 // y out of bounds 
         && state_copy[horizontalStart - 1][0] == ALIVE)
     {
@@ -262,7 +279,7 @@ void findCluster(bool** state_copy, int horizontal, int vertical, int horizontal
     {
         neighbors.push_back({ horizontal - 1,  0 });
     }
-    
+
     while (!neighbors.empty())
     {
         // recourse using a neigboring live cells' location
@@ -765,9 +782,8 @@ int main()
             // initial render
             updateScreen(current_state, horizontal, vertical);
 
-            bool** tmp = createMatrix<bool>(horizontal, vertical);
+            bool** tmp = copyMatrix(current_state, horizontal, vertical);
             vector<point> cluster;
-            copy(current_state, current_state + sizeof(current_state), tmp);
             findCluster(tmp, horizontal, vertical, 0, 0, cluster);
 
             while (!endOfCycle(old_state, current_state, horizontal, vertical))
