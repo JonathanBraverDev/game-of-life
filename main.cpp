@@ -194,11 +194,11 @@ void findCluster(bool** state_copy, int horizontal, int vertical, int horizontal
     }
 
     if (horizontalStart < horizontal - 1 && state_copy[horizontalStart + 1][verticalStart] == ALIVE) { // right
-        neighbors.push_back({ horizontalStart,  vertical - 1 });
+        neighbors.push_back({ horizontalStart + 1,  verticalStart });
     }
     else if (horizontalStart == horizontal - 1 && state_copy[0][verticalStart] == ALIVE) // looping right
     {
-        neighbors.push_back({ horizontalStart,  vertical - 1 });
+        neighbors.push_back({ 0,  verticalStart });
     }
 
     if (verticalStart < vertical - 1 && state_copy[horizontalStart][verticalStart + 1] == ALIVE) { // down
@@ -311,12 +311,13 @@ void findClusters(bool** state, int horizontal, int vertical, vector<vector<poin
             {
                 clusters.push_back(vector<point>{});
                 findCluster(state_copy, horizontal, vertical, cellX, cellY, clusters.back());
+                if (clusters.back().size() < 3)
+                {
+                    clusters.pop_back();
+                }
             }
         }
     }
-
-    // DELETE vectors with size < 3
-    // i cant get it to work.
 }
 
 
