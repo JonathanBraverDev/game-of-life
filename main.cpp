@@ -311,13 +311,61 @@ void findClusters(bool** state, int horizontal, int vertical, vector<vector<poin
             {
                 clusters.push_back(vector<point>{});
                 findCluster(state_copy, horizontal, vertical, cellX, cellY, clusters.back());
-                if (clusters.back().size() < 3)
+                if (clusters.back().size() < 3) // clusters of less than 3 cells CANNOT survive, no matter the arrangment
                 {
                     clusters.pop_back();
                 }
             }
         }
     }
+}
+
+sector findClusterOutline(vector<point> cluster) {
+    sector outline = {};
+    point currentPoint;
+
+    outline.horizontalStart = INT_MAX;
+    outline.horizontalEnd = INT_MIN;
+    outline.verticalStart = INT_MAX;
+    outline.verticalEnd = INT_MIN;
+
+    while (!cluster.empty())
+    {
+        currentPoint = cluster.back();
+    
+        if (outline.horizontalStart > currentPoint.horizontal) {
+            outline.horizontalStart = currentPoint.horizontal;
+        } 
+
+        if (outline.horizontalEnd < currentPoint.horizontal) {
+            outline.horizontalEnd = currentPoint.horizontal;
+        }
+
+        if (outline.verticalStart > currentPoint.vertical) {
+            outline.verticalStart = currentPoint.vertical;
+        }
+
+        if (outline.verticalEnd < currentPoint.vertical) {
+            outline.verticalEnd = currentPoint.vertical;
+        }
+
+        cluster.pop_back();
+    }
+
+    return outline;
+}
+
+vector<sector> findClusterOutlines(vector<vector<point>> clusters) {
+    vector<sector> outlines;
+
+    while (!clusters.empty())
+    {
+        outlines.push_back(findClusterOutline(clusters.back()));
+
+        clusters.pop_back();
+    }
+
+    return outlines;
 }
 
 
@@ -808,6 +856,7 @@ int main()
             bool** tmp = copyMatrix(current_state, horizontal, vertical);
             vector<vector<point>> clusters;
             findClusters(tmp, horizontal, vertical, clusters);
+            vector<sector> tmpp = findClusterOutlines(clusters);
 
             while (!endOfCycle(old_state, current_state, horizontal, vertical))
             {
