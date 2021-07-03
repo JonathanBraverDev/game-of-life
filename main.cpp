@@ -33,8 +33,14 @@ using namespace std;
 #ifdef RANDOM
 constexpr auto INITIAL_LIFE_RATIO = 10; // this is an INVERSE (aka 1 is EVERY pixel)
 #endif // RANDOM
-constexpr auto ALIVE = true;
-constexpr auto DEAD = false;
+const int LONELINESS     = 2;
+const int MIN_SURVIVAL   = 2;
+const int MAX_SURVIVAL   = 3;
+const int MIN_MULTIPLY   = 3;
+const int MAX_MULTIPLY   = 3;
+const int OVERPOPULATION = 4;
+const bool ALIVE = true;
+const bool DEAD = false;
 
 // Set colors
 const COLORREF COLOR_ALIVE = RGB(255, 255, 255);
@@ -577,17 +583,17 @@ bool cellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vert
 #endif // TRAPPED
 
 
-    if (old_state[cellX][cellY] == ALIVE && neighbors <= 1) { // loneliness
+    if (old_state[cellX][cellY] == ALIVE && neighbors <= LONELINESS) {
         status = DEAD;
     }
-    else if (old_state[cellX][cellY] == ALIVE && (neighbors == 2 || neighbors == 3)) { // survival
+    else if (old_state[cellX][cellY] == ALIVE && (neighbors >= MIN_SURVIVAL && neighbors <= MAX_SURVIVAL)) { // survival
         status = ALIVE;
     }
-    else if (old_state[cellX][cellY] == ALIVE && neighbors >= 4) { // overpopulation
+    else if (old_state[cellX][cellY] == DEAD && (neighbors >= MIN_MULTIPLY && neighbors <= MAX_MULTIPLY)) { // multiplication
+        status = ALIVE;
+    }
+    else if (old_state[cellX][cellY] == ALIVE && neighbors >= OVERPOPULATION) { // overpopulation
         status = DEAD;
-    }
-    else if (old_state[cellX][cellY] == DEAD && neighbors == 3) { // multiplication
-        status = ALIVE;
     }
     else { // just in case, assume DEAD
         status = DEAD;
@@ -801,7 +807,6 @@ bool handleResponse(char response) {
 
 
 
-
 int main()
 {
     // sets makes the window fullscreen
@@ -823,7 +828,6 @@ int main()
     horizontal = 1920;
     vertical = 1080;
 #endif // FHD
-
 
 #ifdef TEXTPRINT
     horizontal /= 40; // adapt to a managable size
@@ -848,9 +852,6 @@ int main()
 
             // fill the sceeen according to settings
             initialize(current_state, horizontal, vertical);
-            current_state[0][0] = ALIVE;
-            current_state[0][1] = ALIVE;
-            current_state[1][1] = ALIVE;
 
             // initial render
             updateScreen(current_state, horizontal, vertical);
