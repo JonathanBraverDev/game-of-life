@@ -33,11 +33,11 @@ using namespace std;
 #ifdef RANDOM
 constexpr auto INITIAL_LIFE_RATIO = 10; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
-const int LONELINESS     = 2;
-const int MIN_SURVIVAL   = 2;
-const int MAX_SURVIVAL   = 3;
-const int MIN_MULTIPLY   = 3;
-const int MAX_MULTIPLY   = 3;
+const int LONELINESS = 1;
+const int MIN_SURVIVAL = 2;
+const int MAX_SURVIVAL = 3;
+const int MIN_MULTIPLY = 3;
+const int MAX_MULTIPLY = 3;
 const int OVERPOPULATION = 4;
 const bool ALIVE = true;
 const bool DEAD = false;
@@ -92,7 +92,7 @@ sector CreateSector(int horizontal_start, int horizontal_end, int vertical_start
 
 // creates a single block matrix allocation and splits it into arrays
 template <typename T>
-T** CreateMatrix(int horizontal, int  vertical) {
+T** CreateMatrix(int horizontal, int vertical) {
     T** matrix = new T * [horizontal];
     matrix[0] = new T[horizontal * vertical];
     for (int cellX = 1; cellX < horizontal; cellX++) {
@@ -104,12 +104,8 @@ T** CreateMatrix(int horizontal, int  vertical) {
 
 // copies an existing matrix, given size is of the original
 template <typename T>
-T** CopyMatrix(T** original, int horizontal, int  vertical) {
-    T** new_matrix = new T * [horizontal];
-    new_matrix[0] = new T[horizontal * vertical];
-    for (int cellX = 1; cellX < horizontal; cellX++) {
-        new_matrix[cellX] = new_matrix[0] + cellX * vertical;
-    }
+T** CopyMatrix(T** original, int horizontal, int vertical) {
+    T** new_matrix = CreateMatrix<bool>(horizontal, vertical);
 
     for (int cellX = 0; cellX < horizontal; cellX++)
     {
@@ -171,7 +167,7 @@ snapshot CreateSnapshot(bool** state, sector sector) {
     return new_snapshot;
 }
 
-// finds a cluster of pointds connected to the given coordinates and saves them to the given vector
+// finds a cluster of points connected to the given coordinates and saves them to the given vector
 void FindCluster(bool** state_copy, int horizontal, int vertical, int horizontal_start, int vertical_start, vector<point>& current_cluster) {
 
     if (state_copy[horizontal_start][vertical_start] == DEAD) // prevents 'double tagging' a cell based on the order they recurse at, still calls the function tho
@@ -341,10 +337,10 @@ sector FindClusterOutline(vector<point> cluster) {
     while (!cluster.empty())
     {
         current_point = cluster.back();
-    
+
         if (outline.horizontal_start > current_point.horizontal) {
             outline.horizontal_start = current_point.horizontal;
-        } 
+        }
 
         if (outline.horizontal_end < current_point.horizontal) {
             outline.horizontal_end = current_point.horizontal;
@@ -860,6 +856,8 @@ int main()
             vector<vector<point>> clusters;
             FindClusters(tmp, horizontal, vertical, clusters);
             vector<sector> tmpp = FindClusterOutlines(clusters);
+
+            DeleteMatrix<bool>(tmp);
 
             while (!EndOfCycle(old_state, current_state, horizontal, vertical))
             {
