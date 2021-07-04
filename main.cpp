@@ -25,22 +25,59 @@
 // DOOMED will end the simulation after one iteration ends
 // UNCERTAIN will give the user a choise
 // RESURGENT will endlessly reset the simulation without confirmation
-#define LOOPING
+#define TRAPPED
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
 
+#define NORMAL
+// NORMAL will set the survival parameters to their respective defaults
+// LUSH will increase max population, multiplication and survival rates
+// PARADISE will unlock the secrets to ethernal life 
+// CRUEL will see like swiftly eradicated
+
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 10; // this is an INVERSE (1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 20; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
+const bool ALIVE = true;
+const bool DEAD = false;
+
+#ifdef NORMAL
 const int LONELINESS = 1;
 const int MIN_SURVIVAL = 2;
 const int MAX_SURVIVAL = 3;
 const int MIN_MULTIPLY = 3;
 const int MAX_MULTIPLY = 3;
 const int OVERPOPULATION = 4;
-const bool ALIVE = true;
-const bool DEAD = false;
+#endif // NORMAL
+
+#ifdef LUSH
+const int LONELINESS = 1;
+const int MIN_SURVIVAL = 2;
+const int MAX_SURVIVAL = 4;
+const int MIN_MULTIPLY = 2;
+const int MAX_MULTIPLY = 3;
+const int OVERPOPULATION = 5;
+#endif // LUSH
+
+#ifdef PARADISE
+const int LONELINESS = 0;
+const int MIN_SURVIVAL = 1;
+const int MAX_SURVIVAL = 4;
+const int MIN_MULTIPLY = 2;
+const int MAX_MULTIPLY = 4;
+const int OVERPOPULATION = 6;
+#endif // PARADISE
+
+#ifdef CRUEL
+const int LONELINESS = 1;
+const int MIN_SURVIVAL = 2;
+const int MAX_SURVIVAL = 2;
+const int MIN_MULTIPLY = 3;
+const int MAX_MULTIPLY = 3;
+const int OVERPOPULATION = 3;
+#endif // CRUEL
+
 
 // Set colors
 const COLORREF COLOR_ALIVE = RGB(255, 255, 255);
