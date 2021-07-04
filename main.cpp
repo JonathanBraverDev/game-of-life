@@ -32,7 +32,7 @@
 #define NORMAL
 // NORMAL will set the survival parameters to their respective defaults
 // LUSH will increase max population, multiplication and survival rates
-// PARADISE will unlock the secrets to ethernal life 
+// PARADISE will unlock the secrets to ethernal life
 // CRUEL will see like swiftly eradicated
 
 using namespace std;
@@ -376,7 +376,7 @@ void FindClusters(bool** state, int horizontal, int vertical, vector<vector<poin
             {
                 clusters.push_back(vector<point>{});
                 FindCluster(state_copy, horizontal, vertical, cellX, cellY, clusters.back());
-                if (clusters.back().size() < 3) // clusters of less than 3 cells CANNOT survive, no matter the arrangment
+                if (clusters.back().size() <= MIN_SURVIVAL) // clusters of less than the constant CANNOT survive, no matter the arrangment
                 {
                     clusters.pop_back();
                 }
@@ -952,7 +952,11 @@ bool HandleResponse(char response) {
     return result;
 }
 
-
+void OutLineCaller(bool** current_state, int horizontal, int  vertical, vector<vector<point>> clusters, vector<sector> outlines) {
+    FindClusters(current_state, horizontal, vertical, clusters);
+    FindClusterOutlines(clusters, outlines);
+    DrawSectorOutlines(outlines);
+}
 
 int main()
 {
@@ -1006,21 +1010,17 @@ int main()
             // initial render
             UpdateScreen(current_state, horizontal, vertical);
 
-            FindClusters(current_state, horizontal, vertical, clusters);
-            FindClusterOutlines(clusters, outlines);
-            DrawSectorOutlines(outlines);
+            //OutLineCaller(current_state, horizontal, vertical, clusters, outlines);
 
             while (!EndOfCycle(old_state, current_state, horizontal, vertical))
             {
-                ClearSectorOutlines(outlines);
+                //ClearSectorOutlines(outlines);
                 swap(old_state, current_state); // 'save' the old state without copying
                 UpdateStateMatrix(old_state, current_state, horizontal, vertical);
 
                 UpdateScreen(current_state, horizontal, vertical, old_state, false);
 
-                FindClusters(current_state, horizontal, vertical, clusters);
-                FindClusterOutlines(clusters, outlines);
-                DrawSectorOutlines(outlines);
+                //OutLineCaller(current_state, horizontal, vertical, clusters, outlines);
             }
 
 #ifdef UNCERTAIN
