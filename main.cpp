@@ -139,6 +139,13 @@ T** CreateMatrix(int horizontal, int vertical) {
     return matrix;
 }
 
+// deletes single block allocated matrixes 
+template <typename T>
+void DeleteMatrix(T** matrix) {
+    delete[] matrix[0];
+    delete[] matrix;
+}
+
 // copies an existing matrix, given size is of the original
 template <typename T>
 T** CopyMatrix(T** original, int horizontal, int vertical) {
@@ -376,10 +383,11 @@ void FindClusters(bool** state, int horizontal, int vertical, vector<vector<poin
             }
         }
     }
+
+    DeleteMatrix<bool>(state_copy);
 }
 
-sector FindClusterOutline(vector<point> cluster) {
-    sector outline = {};
+void FindClusterOutline(vector<point>& cluster, sector& outline) {
     point current_point;
 
     outline.horizontal_start = INT_MAX;
@@ -409,21 +417,16 @@ sector FindClusterOutline(vector<point> cluster) {
 
         cluster.pop_back();
     }
-
-    return outline;
 }
 
-vector<sector> FindClusterOutlines(vector<vector<point>> clusters) {
-    vector<sector> outlines;
-
+void FindClusterOutlines(vector<vector<point>>& clusters, vector<sector>& outlines) {
     while (!clusters.empty())
     {
-        outlines.push_back(FindClusterOutline(clusters.back()));
+        outlines.push_back(sector{});
+        FindClusterOutline(clusters.back(), outlines.back());
 
         clusters.pop_back();
     }
-
-    return outlines;
 }
 
 
@@ -603,6 +606,56 @@ void DrawSectorOutlines(vector<sector> sectors) {
     ReleaseDC(myconsole, mydc);
 }
 
+void ClearSectorOutline(sector& sector) {
+    //Get a console handle
+    HWND myconsole = GetConsoleWindow();
+    //Get a handle to device context
+    HDC mydc = GetDC(myconsole);
+
+    int cellX;
+    int cellY = sector.vertical_start - 1;
+
+    for (cellX = sector.horizontal_start - 1; cellX <= sector.horizontal_end + 1; cellX++) // top line
+    {
+        SetPixel(mydc, cellX, cellY, COLOR_DEAD);
+    }
+
+    cellY = sector.vertical_end + 1;
+    for (cellX = sector.horizontal_start - 1; cellX <= sector.horizontal_end + 1; cellX++) // bottom line
+    {
+        SetPixel(mydc, cellX, cellY, COLOR_DEAD);
+    }
+
+    cellX = sector.horizontal_start - 1;
+    for (cellY = sector.vertical_start - 1; cellY <= sector.vertical_end + 1; cellY++) // left line
+    {
+        SetPixel(mydc, cellX, cellY, COLOR_DEAD);
+    }
+
+    cellX = sector.horizontal_end + 1;
+    for (cellY = sector.vertical_start - 1; cellY <= sector.vertical_end + 1; cellY++) // right line
+    {
+        SetPixel(mydc, cellX, cellY, COLOR_DEAD);
+    }
+
+    ReleaseDC(myconsole, mydc);
+}
+
+void ClearSectorOutlines(vector<sector>& sectors) {
+    //Get a console handle
+    HWND myconsole = GetConsoleWindow();
+    //Get a handle to device context
+    HDC mydc = GetDC(myconsole);
+
+    while (!sectors.empty())
+    {
+        ClearSectorOutline(sectors.back());
+        sectors.pop_back();
+    }
+
+    ReleaseDC(myconsole, mydc);
+}
+
 bool CellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vertical) {
     int neighbors = 0;
     bool status = DEAD;
@@ -771,13 +824,6 @@ bool LowActivity(bool** old_state, bool** current_state, int horizontal, int ver
     return result;
 }
 
-// deletes single block allocated matrixes 
-template <typename T>
-void DeleteMatrix(T** matrix) {
-    delete[] matrix[0];
-    delete[] matrix;
-}
-
 // checks all stop conditions for the current run
 bool EndOfCycle(bool** old_state, bool** current_state, int horizontal, int vertical) {
     bool result = false;
@@ -940,6 +986,9 @@ int main()
     bool** current_state = CreateMatrix<bool>(horizontal, vertical);
     char response = 'y';
 
+    vector<vector<point>> clusters;
+    vector<sector> outlines;
+
 #ifdef RESURGENT
     while (true)
 #endif // RESURGENT
@@ -957,20 +1006,21 @@ int main()
             // initial render
             UpdateScreen(current_state, horizontal, vertical);
 
-            bool** tmp = CopyMatrix(current_state, horizontal, vertical);
-            vector<vector<point>> clusters;
-            FindClusters(tmp, horizontal, vertical, clusters);
-            vector<sector> tmpp = FindClusterOutlines(clusters);
-            DrawSectorOutlines(tmpp);
-
-            DeleteMatrix<bool>(tmp);
+            FindClusters(current_state, horizontal, vertical, clusters);
+            FindClusterOutlines(clusters, outlines);
+            DrawSectorOutlines(outlines);
 
             while (!EndOfCycle(old_state, current_state, horizontal, vertical))
             {
+                ClearSectorOutlines(outlines);
                 swap(old_state, current_state); // 'save' the old state without copying
                 UpdateStateMatrix(old_state, current_state, horizontal, vertical);
 
                 UpdateScreen(current_state, horizontal, vertical, old_state, false);
+
+                FindClusters(current_state, horizontal, vertical, clusters);
+                FindClusterOutlines(clusters, outlines);
+                DrawSectorOutlines(outlines);
             }
 
 #ifdef UNCERTAIN
@@ -991,3 +1041,4 @@ int main()
 // refactoring help:
 // lover camel case [a-z]+[A-Z0-9][a-z0-9]+[A-Za-z0-9]*
 // upper camel case [A-Z][a-z0-9]*[A-Z0-9][a-z0-9]+[A-Za-z0-9]*
+// pointer parameters [a-zA-Z>]& 
