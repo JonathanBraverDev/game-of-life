@@ -185,39 +185,48 @@ void FindCluster(bool** state_copy, int horizontal, int vertical, int horizontal
     if (horizontal_start > 0 && state_copy[horizontal_start - 1][vertical_start] == ALIVE) { // left 
         neighbors.push_back({ horizontal_start - 1,  vertical_start });
     }
+#ifdef LOOPING
     else if (horizontal_start == 0 && state_copy[horizontal - 1][vertical_start] == ALIVE) // looping left
     {
         neighbors.push_back({ horizontal - 1,  vertical_start });
     }
+#endif
 
     if (vertical_start > 0 && state_copy[horizontal_start][vertical_start - 1] == ALIVE) { // up
         neighbors.push_back({ horizontal_start,  vertical_start - 1 });
     }
+#ifdef LOOPING
     else if (vertical_start == 0 && state_copy[horizontal_start][vertical - 1] == ALIVE) // looping up
     {
         neighbors.push_back({ horizontal_start,  vertical - 1 });
     }
+#endif
 
     if (horizontal_start < horizontal - 1 && state_copy[horizontal_start + 1][vertical_start] == ALIVE) { // right
         neighbors.push_back({ horizontal_start + 1,  vertical_start });
     }
+#ifdef LOOPING
     else if (horizontal_start == horizontal - 1 && state_copy[0][vertical_start] == ALIVE) // looping right
     {
         neighbors.push_back({ 0,  vertical_start });
     }
+#endif
 
     if (vertical_start < vertical - 1 && state_copy[horizontal_start][vertical_start + 1] == ALIVE) { // down
         neighbors.push_back({ horizontal_start,  vertical_start + 1 });
     }
+#ifdef LOOPING
     else if (vertical_start == vertical - 1 && state_copy[horizontal_start][0] == ALIVE) // looping down
     {
         neighbors.push_back({ horizontal_start,  0 });
     }
+#endif
 
     if (horizontal_start > 0 && vertical_start > 0
         && state_copy[horizontal_start - 1][vertical_start - 1] == ALIVE) { // top left
         neighbors.push_back({ horizontal_start - 1,  vertical_start - 1 });
     }
+#ifdef LOOPING
     else if (horizontal_start == 0 && vertical_start > 0 // x out of bounds
         && state_copy[horizontal - 1][vertical_start - 1] == ALIVE)
     {
@@ -233,11 +242,13 @@ void FindCluster(bool** state_copy, int horizontal, int vertical, int horizontal
     {
         neighbors.push_back({ horizontal - 1,  vertical - 1 });
     }
+#endif
 
     if (horizontal_start < horizontal - 1 && vertical_start < vertical - 1 // bottom right
         && state_copy[horizontal_start + 1][vertical_start + 1] == ALIVE) {
         neighbors.push_back({ horizontal_start + 1,  vertical_start + 1 });
     }
+#ifdef LOOPING
     else if (horizontal_start == horizontal - 1 && vertical_start < vertical - 1 // x out of bounds
         && state_copy[0][vertical_start + 1] == ALIVE)
     {
@@ -253,11 +264,13 @@ void FindCluster(bool** state_copy, int horizontal, int vertical, int horizontal
     {
         neighbors.push_back({ 0,  0 });
     }
+#endif
 
     if (horizontal_start < horizontal - 1 && vertical_start > 0 // top right
         && state_copy[horizontal_start + 1][vertical_start - 1] == 1) {
         neighbors.push_back({ horizontal_start + 1,  vertical_start - 1 });
     }
+#ifdef LOOPING
     else if (horizontal_start == horizontal - 1 && vertical_start > 0 // x out of bounds
         && state_copy[0][vertical_start - 1] == ALIVE)
     {
@@ -273,11 +286,13 @@ void FindCluster(bool** state_copy, int horizontal, int vertical, int horizontal
     {
         neighbors.push_back({ 0,  vertical - 1 });
     }
+#endif
 
     if (horizontal_start > 0 && vertical_start < vertical - 1 // bottom left
         && state_copy[horizontal_start - 1][vertical_start + 1] == 1) {
         neighbors.push_back({ horizontal_start - 1,  vertical_start + 1 });
     }
+#ifdef LOOPING
     else if (horizontal_start == 0 && vertical_start < vertical - 1 // x out of bounds
         && state_copy[horizontal - 1][vertical_start + 1] == ALIVE)
     {
@@ -293,6 +308,7 @@ void FindCluster(bool** state_copy, int horizontal, int vertical, int horizontal
     {
         neighbors.push_back({ horizontal - 1,  0 });
     }
+#endif
 
     while (!neighbors.empty())
     {
