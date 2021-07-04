@@ -17,7 +17,7 @@
 #define BRUTAL
 // EFFICENT will run until the activity drops low enogh to be boring
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
-#define TEXTPRINT
+#define LINEAR
 // LINEAR will render the scren as a big chunk
 // MULTIRENDER will split rendering into a few columns
 // TEXTPRINT will print the grid in text instead of pixels at significantly reduced rez and speed
@@ -37,7 +37,7 @@
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 20; // this is an INVERSE (1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 25; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
 const bool ALIVE = true;
 const bool DEAD = false;
@@ -526,6 +526,8 @@ void UpdateScreen(bool** current_state, int horizontal, int vertical, bool** old
             }
         }
     }
+
+    ReleaseDC(myconsole, mydc);
 #endif // LINEAR
 
 #ifdef TEXTPRINT
@@ -549,6 +551,56 @@ void UpdateScreen(bool** current_state, int horizontal, int vertical, bool** old
 #if defined(PATIENT) || defined(TEXTPRINT)
     Sleep(1500);
 #endif // defined(PATIENT) || defined(TEXTPRINT)
+}
+
+void DrawSectorOutline(sector sector) {
+    //Get a console handle
+    HWND myconsole = GetConsoleWindow();
+    //Get a handle to device context
+    HDC mydc = GetDC(myconsole);
+
+    int cellX;
+    int cellY = sector.vertical_start - 1;
+
+    for (cellX = sector.horizontal_start - 1; cellX <= sector.horizontal_end + 1; cellX++) // top line
+    {
+        SetPixel(mydc, cellX, cellY, COLOR_GREEN);
+    }
+
+    cellY = sector.vertical_end + 1;
+    for (cellX = sector.horizontal_start - 1; cellX <= sector.horizontal_end + 1; cellX++) // bottom line
+    {
+        SetPixel(mydc, cellX, cellY, COLOR_GREEN);
+    }
+
+    cellX = sector.horizontal_start - 1;
+    for (cellY = sector.vertical_start - 1; cellY <= sector.vertical_end + 1; cellY++) // left line
+    {
+        SetPixel(mydc, cellX, cellY, COLOR_GREEN);
+    }
+
+    cellX = sector.horizontal_end + 1;
+    for (cellY = sector.vertical_start - 1; cellY <= sector.vertical_end + 1; cellY++) // right line
+    {
+        SetPixel(mydc, cellX, cellY, COLOR_GREEN);
+    }
+
+    ReleaseDC(myconsole, mydc);
+}
+
+void DrawSectorOutlines(vector<sector> sectors) {
+    //Get a console handle
+    HWND myconsole = GetConsoleWindow();
+    //Get a handle to device context
+    HDC mydc = GetDC(myconsole);
+
+    while (!sectors.empty())
+    {
+        DrawSectorOutline(sectors.back());
+        sectors.pop_back();
+    }
+
+    ReleaseDC(myconsole, mydc);
 }
 
 bool CellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vertical) {
@@ -909,6 +961,7 @@ int main()
             vector<vector<point>> clusters;
             FindClusters(tmp, horizontal, vertical, clusters);
             vector<sector> tmpp = FindClusterOutlines(clusters);
+            DrawSectorOutlines(tmpp);
 
             DeleteMatrix<bool>(tmp);
 
