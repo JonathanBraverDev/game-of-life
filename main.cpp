@@ -25,7 +25,7 @@
 // DOOMED will end the simulation after one iteration ends
 // UNCERTAIN will give the user a choise
 // RESURGENT will endlessly reset the simulation without confirmation
-#define TRAPPED
+#define LOOPING
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
 
@@ -311,7 +311,7 @@ void FindCluster(bool** state_copy, int horizontal, int vertical, int horizontal
 #endif
 
     if (horizontal_start < horizontal - 1 && vertical_start > 0 // top right
-        && state_copy[horizontal_start + 1][vertical_start - 1] == 1) {
+        && state_copy[horizontal_start + 1][vertical_start - 1] == ALIVE) {
         neighbors.push_back({ horizontal_start + 1,  vertical_start - 1 });
     }
 #ifdef LOOPING
@@ -333,7 +333,7 @@ void FindCluster(bool** state_copy, int horizontal, int vertical, int horizontal
 #endif
 
     if (horizontal_start > 0 && vertical_start < vertical - 1 // bottom left
-        && state_copy[horizontal_start - 1][vertical_start + 1] == 1) {
+        && state_copy[horizontal_start - 1][vertical_start + 1] == ALIVE) {
         neighbors.push_back({ horizontal_start - 1,  vertical_start + 1 });
     }
 #ifdef LOOPING
@@ -661,49 +661,65 @@ bool CellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vert
     bool status = DEAD;
 
 #ifdef LOOPING
-    // counting neighbors, looping edges
-    if ((cellX > 0 && old_state[cellX - 1][cellY] == ALIVE) || // left
-        (cellX == 0 && old_state[horizontal - 1][cellY] == ALIVE))
+    // normal checks
+    int diffX;
+    int diffY;
+    int currX;
+    int currY;
+    for (diffX = -1; diffX <= 1; diffX++)
+    {
+        for (diffY = -1; diffY <= 1; diffY++)
+        {
+            currX = cellX + diffX;
+            currY = cellY + diffY;
+            if (currX >= 0 && currY >= 0
+                && currX < horizontal && currY < vertical
+                && old_state[currX][currY] == ALIVE) {
+                neighbors++;
+            }
+        }
+    }
+
+
+    // streight loop checks
+    if (cellX == 0 && old_state[horizontal - 1][cellY] == ALIVE) // looping left
         neighbors++;
-    if ((cellY > 0 && old_state[cellX][cellY - 1] == ALIVE) || // up
-        (cellY == 0 && old_state[cellX][vertical - 1] == ALIVE))
+    if (cellY == 0 && old_state[cellX][vertical - 1] == ALIVE) // looping up
         neighbors++;
-    if ((cellX < horizontal - 1 && old_state[cellX + 1][cellY] == ALIVE) ||  // right
-        (cellX == horizontal - 1 && old_state[0][cellY] == ALIVE))
+    if (cellX == horizontal - 1 && old_state[0][cellY] == ALIVE) // looping right
         neighbors++;
-    if ((cellY < vertical - 1 && old_state[cellX][cellY + 1] == ALIVE) || // down
-        (cellY == vertical - 1 && old_state[cellX][0] == ALIVE))
+    if (cellY == vertical - 1 && old_state[cellX][0] == ALIVE) // looping down
         neighbors++;
-    if ((cellX > 0 && cellY > 0
-        && old_state[cellX - 1][cellY - 1] == ALIVE) || // top left
-        (cellX == 0 && cellY > 0 // x out of bounds
+
+    // top left loop checks
+    if ((cellX == 0 && cellY > 0 // x out of bounds
             && old_state[horizontal - 1][cellY - 1] == ALIVE) ||
         (cellX > 0 && cellY == 0 // y out of bounds
             && old_state[cellX - 1][vertical - 1] == ALIVE) ||
         (cellX == 0 && cellY == 0 // both out of bounds
             && old_state[horizontal - 1][vertical - 1] == ALIVE))
         neighbors++;
-    if ((cellX < horizontal - 1 && cellY < vertical - 1 // bottom right
-        && old_state[cellX + 1][cellY + 1] == ALIVE) ||
-        (cellX == horizontal - 1 && cellY < vertical - 1 // x out of bounds
+
+    // bottom right loop checks
+    if ((cellX == horizontal - 1 && cellY < vertical - 1 // x out of bounds
             && old_state[0][cellY + 1] == ALIVE) ||
         (cellX < horizontal - 1 && cellY == vertical - 1 // y out of bounds
             && old_state[cellX + 1][0] == ALIVE) ||
         (cellX == horizontal - 1 && cellY == vertical - 1 // both out of bounds
             && old_state[0][0] == ALIVE))
         neighbors++;
-    if ((cellX < horizontal - 1 && cellY > 0 // top right
-        && old_state[cellX + 1][cellY - 1] == 1) ||
-        (cellX == horizontal - 1 && cellY > 0 // x out of bounds
+
+    // top right loop checks
+    if ((cellX == horizontal - 1 && cellY > 0 // x out of bounds
             && old_state[0][cellY - 1] == ALIVE) ||
         (cellX < horizontal - 1 && cellY == 0 // y out of bounds
             && old_state[cellX + 1][vertical - 1] == ALIVE) ||
         (cellX == horizontal - 1 && cellY == 0 // both out of bounds
             && old_state[0][vertical - 1] == ALIVE))
         neighbors++;
-    if ((cellX > 0 && cellY < vertical - 1 // bottom left
-        && old_state[cellX - 1][cellY + 1] == 1) ||
-        (cellX == 0 && cellY < vertical - 1 // x out of bounds
+
+    // bottom left loop checks
+    if ((cellX == 0 && cellY < vertical - 1 // x out of bounds
             && old_state[horizontal - 1][cellY + 1] == ALIVE) ||
         (cellX > 0 && cellY == vertical - 1 // y out of bounds 
             && old_state[cellX - 1][0] == ALIVE) ||
@@ -713,27 +729,23 @@ bool CellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vert
 #endif // LOOPING
 
 #ifdef TRAPPED
-    // counting neighbors with bound limits
-    if (cellX > 0 && old_state[cellX - 1][cellY] == 1)
-        neighbors++;
-    if (cellY > 0 && old_state[cellX][cellY - 1] == 1)
-        neighbors++;
-    if (cellX > 0 && cellY > 0
-        && old_state[cellX - 1][cellY - 1] == 1)
-        neighbors++;
-    if (cellX < horizontal - 1 && old_state[cellX + 1][cellY] == 1)
-        neighbors++;
-    if (cellY < vertical - 1 && old_state[cellX][cellY + 1] == 1)
-        neighbors++;
-    if (cellX < horizontal - 1 && cellY < vertical - 1
-        && old_state[cellX + 1][cellY + 1] == 1)
-        neighbors++;
-    if (cellX < horizontal - 1 && cellY > 0
-        && old_state[cellX + 1][cellY - 1] == 1)
-        neighbors++;
-    if (cellX > 0 && cellY < vertical - 1
-        && old_state[cellX - 1][cellY + 1] == 1)
-        neighbors++;
+    int diffX;
+    int diffY;
+    int currX;
+    int currY;
+    for (diffX = -1; diffX <= 1; diffX++)
+    {
+        for (diffY = -1; diffY <= 1; diffY++)
+        {
+            currX = cellX + diffX;
+            currY = cellY + diffY;
+            if (currX >= 0 && currY >= 0 &&
+                currX < horizontal && currY < vertical &&
+                old_state[currX][currY] == ALIVE) {
+                neighbors++;
+            }
+        }
+    }
 #endif // TRAPPED
 
 
@@ -1015,11 +1027,11 @@ int main()
             while (!EndOfCycle(old_state, current_state, horizontal, vertical))
             {
                 //ClearSectorOutlines(outlines);
+
                 swap(old_state, current_state); // 'save' the old state without copying
                 UpdateStateMatrix(old_state, current_state, horizontal, vertical);
 
                 UpdateScreen(current_state, horizontal, vertical, old_state, false);
-
                 //OutLineCaller(current_state, horizontal, vertical, clusters, outlines);
             }
 
