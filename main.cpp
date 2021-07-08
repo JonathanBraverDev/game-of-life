@@ -17,7 +17,7 @@
 #define BRUTAL
 // EFFICENT will run until the activity drops low enogh to be boring
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
-#define LINEAR
+#define TEXTPRINT
 // LINEAR will render the scren as a big chunk
 // MULTIRENDER will split rendering into a few columns
 // TEXTPRINT will print the grid in text instead of pixels at significantly reduced rez and speed
@@ -37,7 +37,7 @@
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 3; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
 const bool ALIVE = true;
 const bool DEAD = false;
@@ -785,11 +785,11 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
     {
         for (int cellY = 0; cellY < maxY; cellY++)
         {
-            //if (old_copy[cellX][cellY] == ALIVE)
-            //{
+            if (old_copy[cellX][cellY] == ALIVE || old_copy[cellX][cellY] == DEAD) // !!!commenting out either part causer a back and forth between 2 states!!!
+            {
                 current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
                 //UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY);
-            //}
+            }
         }
     }
 }
@@ -1014,10 +1014,13 @@ int main()
     maxY = 3;
 #endif // TEXTPRINT
 
-
-    bool** old_state = CreateMatrix<bool>(maxX, maxY);
     bool** current_state = CreateMatrix<bool>(maxX, maxY);
+    bool** old_state = CreateMatrix<bool>(maxX, maxY); // purly to stop the 'uninitialised used'
+    bool initial;
+
+#ifdef UNCERTAIN
     char response = 'y';
+#endif // UNCERTAIN
 
     vector<vector<point>> clusters;
     vector<sector> outlines;
@@ -1035,14 +1038,17 @@ int main()
 
             // fill the sceeen according to settings
             Initialize(current_state, maxX, maxY);
+            old_state = CopyMatrix(current_state, maxX, maxY);
+            initial = true;
 
             // initial render
             UpdateScreen(current_state, maxX, maxY);
 
             //OutLineCaller(current_state, maxX, maxY, clusters, outlines);
 
-            while (!EndOfCycle(old_state, current_state, maxX, maxY))
+            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY))
             {
+                initial = false;
                 //ClearSectorOutlines(outlines);
 
                 swap(old_state, current_state); // 'save' the old state without copying
