@@ -102,8 +102,8 @@ struct entry
 
 struct point
 {
-    int maxX;
-    int maxY;
+    int cellX;
+    int cellY;
 };
 
 struct sector
@@ -362,7 +362,7 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, ve
     while (!neighbors.empty())
     {
         // recourse using a neigboring live cells' location
-        FindCluster(state_copy, maxX, maxY, neighbors.back().maxX, neighbors.back().maxY, current_cluster);
+        FindCluster(state_copy, maxX, maxY, neighbors.back().cellX, neighbors.back().cellY, current_cluster);
         neighbors.pop_back(); // remove the last value
     }
 }
@@ -404,20 +404,20 @@ void FindClusterOutline(vector<point>& cluster, sector& outline) {
     {
         current_point = cluster.back();
 
-        if (outline.startX > current_point.maxX) {
-            outline.startX = current_point.maxX;
+        if (outline.startX > current_point.cellX) {
+            outline.startX = current_point.cellX;
         }
 
-        if (outline.endX < current_point.maxX) {
-            outline.endX = current_point.maxX;
+        if (outline.endX < current_point.cellX) {
+            outline.endX = current_point.cellX;
         }
 
-        if (outline.startY > current_point.maxY) {
-            outline.startY = current_point.maxY;
+        if (outline.startY > current_point.cellY) {
+            outline.startY = current_point.cellY;
         }
 
-        if (outline.endY < current_point.maxY) {
-            outline.endY = current_point.maxY;
+        if (outline.endY < current_point.cellY) {
+            outline.endY = current_point.cellY;
         }
 
         cluster.pop_back();
@@ -771,7 +771,7 @@ void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, in
     while (!neighbors.empty())
     {
         // mark neighbors as dead for future checks
-        old_copy[neighbors.back().maxX][neighbors.back().maxY] = DEAD;
+        old_copy[neighbors.back().cellX][neighbors.back().cellY] = DEAD;
 
         // update neighbors in the next state
         current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
