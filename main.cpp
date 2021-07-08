@@ -17,7 +17,7 @@
 #define BRUTAL
 // EFFICENT will run until the activity drops low enogh to be boring
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
-#define TEXTPRINT
+#define LINEAR
 // LINEAR will render the scren as a big chunk
 // MULTIRENDER will split rendering into a few columns
 // TEXTPRINT will print the grid in text instead of pixels at significantly reduced rez and speed
@@ -37,7 +37,7 @@
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 3; // this is an INVERSE (1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
 const bool ALIVE = true;
 const bool DEAD = false;
@@ -212,7 +212,7 @@ snapshot CreateSnapshot(bool** state, sector sector) {
 }
 
 // fills the given vector with all nearby living cells
-void FillNeighborVector(bool** state_copy, int maxX, int maxY, int cellX, int cellY, vector<point>& neighbors) {
+void FindLivingNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cellY, vector<point>& neighbors) {
     // counting neighbors, looping edges
     if (cellX > 0 && state_copy[cellX - 1][cellY] == ALIVE) { // left 
         neighbors.push_back({ cellX - 1,  cellY });
@@ -343,6 +343,125 @@ void FillNeighborVector(bool** state_copy, int maxX, int maxY, int cellX, int ce
 #endif
 }
 
+// fills the given vector with all nearby living cells
+void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cellY, vector<point>& neighbors) {
+    // counting neighbors, looping edges
+    if (cellX > 0) { // left 
+        neighbors.push_back({ cellX - 1,  cellY });
+    }
+#ifdef LOOPING
+    else if (cellX == 0) // looping left
+    {
+        neighbors.push_back({ maxX - 1,  cellY });
+    }
+#endif
+
+    if (cellY > 0) { // up
+        neighbors.push_back({ cellX,  cellY - 1 });
+    }
+#ifdef LOOPING
+    else if (cellY == 0) // looping up
+    {
+        neighbors.push_back({ cellX,  maxY - 1 });
+    }
+#endif
+
+    if (cellX < maxX - 1) { // right
+        neighbors.push_back({ cellX + 1,  cellY });
+    }
+#ifdef LOOPING
+    else if (cellX == maxX - 1) // looping right
+    {
+        neighbors.push_back({ 0,  cellY });
+    }
+#endif
+
+    if (cellY < maxY - 1) { // down
+        neighbors.push_back({ cellX,  cellY + 1 });
+    }
+#ifdef LOOPING
+    else if (cellY == maxY - 1) // looping down
+    {
+        neighbors.push_back({ cellX,  0 });
+    }
+#endif
+
+    if (cellX > 0 && cellY > 0) { // top left
+        neighbors.push_back({ cellX - 1,  cellY - 1 });
+    }
+#ifdef LOOPING
+    else if (cellX == 0 && cellY > 0) // x out of bounds
+    {
+        neighbors.push_back({ maxX - 1,  cellY - 1 });
+    }
+    else if (cellX > 0 && cellY == 0) // y out of bounds
+    {
+        neighbors.push_back({ cellX - 1,  maxY - 1 });
+    }
+    else if (cellX == 0 && cellY == 0) // both out of bounds
+    {
+        neighbors.push_back({ maxX - 1,  maxY - 1 });
+    }
+#endif
+
+    if (cellX < maxX - 1 && cellY < maxY - 1) // bottom right 
+    {
+        neighbors.push_back({ cellX + 1,  cellY + 1 });
+    }
+#ifdef LOOPING
+    else if (cellX == maxX - 1 && cellY < maxY - 1) // x out of bounds
+    {
+        neighbors.push_back({ 0,  cellY + 1 });
+    }
+    else if (cellX < maxX - 1 && cellY == maxY - 1) // y out of bounds
+    {
+        neighbors.push_back({ cellX + 1,  0 });
+    }
+    else if (cellX == maxX - 1 && cellY == maxY - 1) // both out of bounds
+    {
+        neighbors.push_back({ 0,  0 });
+    }
+#endif
+
+    if (cellX < maxX - 1 && cellY > 0) // top right
+    {
+        neighbors.push_back({ cellX + 1,  cellY - 1 });
+    }
+#ifdef LOOPING
+    else if (cellX == maxX - 1 && cellY > 0) // x out of bounds
+    {
+        neighbors.push_back({ 0,  cellY - 1 });
+    }
+    else if (cellX < maxX - 1 && cellY == 0) // y out of bounds
+    {
+        neighbors.push_back({ cellX + 1,  maxY - 1 });
+    }
+    else if (cellX == maxX - 1 && cellY == 0) // both out of bounds
+    {
+        neighbors.push_back({ 0,  maxY - 1 });
+    }
+#endif
+
+    if (cellX > 0 && cellY < maxY - 1) // bottom left
+    {
+        neighbors.push_back({ cellX - 1,  cellY + 1 });
+    }
+#ifdef LOOPING
+    else if (cellX == 0 && cellY < maxY - 1) // x out of bounds
+    {
+        neighbors.push_back({ maxX - 1,  cellY + 1 });
+    }
+    else if (cellX > 0 && cellY == maxY - 1) // y out of bounds
+    {
+        neighbors.push_back({ cellX - 1, 0 });
+    }
+    else if (cellX == 0 && cellY == maxY - 1) // both out of bounds
+    {
+        neighbors.push_back({ maxX - 1,  0 });
+    }
+#endif
+}
+
 // finds a cluster of points connected to the given coordinates and saves them to the given vector
 void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, vector<point>& current_cluster) {
 
@@ -357,7 +476,7 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, ve
 
     vector<point> neighbors;
 
-    FillNeighborVector(state_copy, maxX, maxY, cellX, cellY, neighbors);
+    FindLivingNeighbors(state_copy, maxX, maxY, cellX, cellY, neighbors);
 
     while (!neighbors.empty())
     {
@@ -761,12 +880,16 @@ bool CellStatus(bool** old_state, int cellX, int cellY, int maxX, int maxY) {
     return status;
 }
 
+//void UpdateCell(bool** old_state, bool** current_state, int maxX, int maxY, int cellX, int cellY) {
+//    current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
+//}
+
 void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, int maxX, int maxY, int cellX, int cellY) {
     old_copy[cellX][cellY] = DEAD; // marking itself as dead
 
     vector<point> neighbors;
 
-    FillNeighborVector(old_copy, maxX, maxY, cellX, cellY, neighbors);
+    FindAllNeighbors(old_copy, maxX, maxY, cellX, cellY, neighbors);
 
     while (!neighbors.empty())
     {
@@ -774,7 +897,7 @@ void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, in
         old_copy[neighbors.back().cellX][neighbors.back().cellY] = DEAD;
 
         // update neighbors in the next state
-        current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
+        current_state[neighbors.back().cellX][neighbors.back().cellY] = CellStatus(old_state, neighbors.back().cellX, neighbors.back().cellY, maxX, maxY);
         neighbors.pop_back(); // remove the proccesed neighbor value
     }
 }
@@ -785,10 +908,10 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
     {
         for (int cellY = 0; cellY < maxY; cellY++)
         {
-            if (old_copy[cellX][cellY] == ALIVE || old_copy[cellX][cellY] == DEAD) // !!!commenting out either part causer a back and forth between 2 states!!!
+            if (old_copy[cellX][cellY] == ALIVE/* || old_copy[cellX][cellY] == DEAD*/)
             {
                 current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
-                //UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY);
+                UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY);
             }
         }
     }
@@ -1038,6 +1161,7 @@ int main()
 
             // fill the sceeen according to settings
             Initialize(current_state, maxX, maxY);
+            DeleteMatrix<bool>(old_state);
             old_state = CopyMatrix(current_state, maxX, maxY);
             initial = true;
 
@@ -1051,7 +1175,9 @@ int main()
                 initial = false;
                 //ClearSectorOutlines(outlines);
 
-                swap(old_state, current_state); // 'save' the old state without copying
+                //swap(old_state, current_state); // 'save' the old state without copying
+                DeleteMatrix<bool>(old_state);
+                old_state = CopyMatrix(current_state, maxX, maxY);
                 UpdateStateMatrix(old_state, current_state, maxX, maxY);
 
                 UpdateScreen(current_state, maxX, maxY, old_state, false);
