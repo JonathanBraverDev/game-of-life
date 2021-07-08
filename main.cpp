@@ -25,7 +25,7 @@
 // DOOMED will end the simulation after one iteration ends
 // UNCERTAIN will give the user a choise
 // RESURGENT will endlessly reset the simulation without confirmation
-#define LOOPING
+#define TRAPPED
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
 
@@ -37,7 +37,7 @@
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 25; // this is an INVERSE (1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
 const bool ALIVE = true;
 const bool DEAD = false;
@@ -88,40 +88,40 @@ const COLORREF COLOR_GREEN = RGB(0, 255, 0);
 // Define structures
 struct snapshot
 {
-    int horizontal;
-    int vertical;
+    int maxX;
+    int maxY;
     bool** local_state;
 };
 
 struct entry
 {
-    int max_horizontal;
-    int max_vertical;
+    int max_maxX;
+    int max_maxY;
     snapshot* snapshots;
 };
 
 struct point
 {
-    int horizontal;
-    int vertical;
+    int maxX;
+    int maxY;
 };
 
 struct sector
 {
-    int horizontal_start;
-    int horizontal_end;
-    int vertical_start;
-    int vertical_end;
+    int startX;
+    int endX;
+    int startY;
+    int endY;
 };
 
 
 // creates a secors with the given limits
-sector CreateSector(int horizontal_start, int horizontal_end, int vertical_start, int vertical_end) {
+sector CreateSector(int startX, int endX, int startY, int endY) {
     sector new_sector{};
-    new_sector.horizontal_start = horizontal_start;
-    new_sector.horizontal_end = horizontal_end;
-    new_sector.vertical_start = horizontal_start;
-    new_sector.vertical_end = vertical_end;
+    new_sector.startX = startX;
+    new_sector.endX = endX;
+    new_sector.startY = startY;
+    new_sector.endY = endY;
 
     return new_sector;
 }
@@ -129,11 +129,11 @@ sector CreateSector(int horizontal_start, int horizontal_end, int vertical_start
 
 // creates a single block matrix allocation and splits it into arrays
 template <typename T>
-T** CreateMatrix(int horizontal, int vertical) {
-    T** matrix = new T * [horizontal];
-    matrix[0] = new T[horizontal * vertical];
-    for (int cellX = 1; cellX < horizontal; cellX++) {
-        matrix[cellX] = matrix[0] + cellX * vertical;
+T** CreateMatrix(int maxX, int maxY) {
+    T** matrix = new T * [maxX];
+    matrix[0] = new T[maxX * maxY];
+    for (int cellX = 1; cellX < maxX; cellX++) {
+        matrix[cellX] = matrix[0] + cellX * maxY;
     }
 
     return matrix;
@@ -148,12 +148,12 @@ void DeleteMatrix(T** matrix) {
 
 // copies an existing matrix, given size is of the original
 template <typename T>
-T** CopyMatrix(T** original, int horizontal, int vertical) {
-    T** new_matrix = CreateMatrix<bool>(horizontal, vertical);
+T** CopyMatrix(T** original, int maxX, int maxY) {
+    T** new_matrix = CreateMatrix<bool>(maxX, maxY);
 
-    for (int cellX = 0; cellX < horizontal; cellX++)
+    for (int cellX = 0; cellX < maxX; cellX++)
     {
-        copy(original[cellX], original[cellX] + vertical, new_matrix[cellX]);
+        copy(original[cellX], original[cellX] + maxY, new_matrix[cellX]);
     }
 
     return new_matrix;
@@ -161,14 +161,14 @@ T** CopyMatrix(T** original, int horizontal, int vertical) {
 
 
 // returns a smaller matrix of an area in the state
-bool** CreateLocalState(bool** state, int horizontal_start, int horizontal_end, int vertical_start, int vertical_end) {
-    bool** local_state = CreateMatrix<bool>(horizontal_end - horizontal_start, vertical_end - horizontal_start);
+bool** CreateLocalState(bool** state, int startX, int endX, int startY, int endY) {
+    bool** local_state = CreateMatrix<bool>(endX - startX, endY - startX);
 
-    for (int cellX = horizontal_start; cellX < horizontal_end; cellX++)
+    for (int cellX = startX; cellX < endX; cellX++)
     {
-        for (int cellY = vertical_start; cellY < vertical_end; cellY++)
+        for (int cellY = startY; cellY < endY; cellY++)
         {
-            local_state[cellX - horizontal_start][cellY - vertical_start] = state[cellX][cellY];
+            local_state[cellX - startX][cellY - startY] = state[cellX][cellY];
         }
     }
 
@@ -177,13 +177,13 @@ bool** CreateLocalState(bool** state, int horizontal_start, int horizontal_end, 
 
 // returns a smaller matrix of an area in the state
 bool** CreateLocalState(bool** state, sector sector) {
-    bool** local_state = CreateMatrix<bool>(sector.horizontal_end - sector.horizontal_start, sector.vertical_end - sector.horizontal_start);
+    bool** local_state = CreateMatrix<bool>(sector.endX - sector.startX, sector.endY - sector.startX);
 
-    for (int cellX = sector.horizontal_start; cellX < sector.horizontal_end; cellX++)
+    for (int cellX = sector.startX; cellX < sector.endX; cellX++)
     {
-        for (int cellY = sector.vertical_start; cellY < sector.vertical_end; cellY++)
+        for (int cellY = sector.startY; cellY < sector.endY; cellY++)
         {
-            local_state[cellX - sector.horizontal_start][cellY - sector.vertical_start] = state[cellX][cellY];
+            local_state[cellX - sector.startX][cellY - sector.startY] = state[cellX][cellY];
         }
     }
 
@@ -192,11 +192,11 @@ bool** CreateLocalState(bool** state, sector sector) {
 
 
 // returns a snapshot of a cestion of the state within the given coprdinates
-snapshot CreateSnapshot(bool** state, int horizontal_start, int horizontal_end, int vertical_start, int vertical_end) {
+snapshot CreateSnapshot(bool** state, int startX, int endX, int startY, int endY) {
     snapshot new_snapshot{};
-    new_snapshot.local_state = CreateLocalState(state, horizontal_start, horizontal_end, vertical_start, vertical_end);
-    new_snapshot.horizontal = horizontal_end - horizontal_start;
-    new_snapshot.vertical = vertical_end - vertical_start;
+    new_snapshot.local_state = CreateLocalState(state, startX, endX, startY, endY);
+    new_snapshot.maxX = endX - startX;
+    new_snapshot.maxY = endY - startY;
 
     return new_snapshot;
 }
@@ -204,178 +204,183 @@ snapshot CreateSnapshot(bool** state, int horizontal_start, int horizontal_end, 
 // returns a snapshot of a cestion of the state within the given coprdinates
 snapshot CreateSnapshot(bool** state, sector sector) {
     snapshot new_snapshot{};
-    new_snapshot.local_state = CreateLocalState(state, sector.horizontal_start, sector.horizontal_end, sector.vertical_start, sector.vertical_end);
-    new_snapshot.horizontal = sector.horizontal_end - sector.horizontal_start;
-    new_snapshot.vertical = sector.vertical_end - sector.vertical_start;
+    new_snapshot.local_state = CreateLocalState(state, sector.startX, sector.endX, sector.startY, sector.endY);
+    new_snapshot.maxX = sector.endX - sector.startX;
+    new_snapshot.maxY = sector.endY - sector.startY;
 
     return new_snapshot;
 }
 
-// finds a cluster of points connected to the given coordinates and saves them to the given vector
-void FindCluster(bool** state_copy, int horizontal, int vertical, int horizontal_start, int vertical_start, vector<point>& current_cluster) {
-
-    if (state_copy[horizontal_start][vertical_start] == DEAD) // prevents 'double tagging' a cell based on the order they recurse at, still calls the function tho
-    {
-        return;
-    }
-
-    point current_point = point{ horizontal_start, vertical_start };
-    current_cluster.push_back(current_point);
-    state_copy[horizontal_start][vertical_start] = DEAD; // marking saved cells as dead
-
-    vector<point> neighbors;
-
+// fills the given vector with all nearby living cells
+void FillNeighborVector(bool** state_copy, int maxX, int maxY, int cellX, int cellY, vector<point>& neighbors) {
     // counting neighbors, looping edges
-    if (horizontal_start > 0 && state_copy[horizontal_start - 1][vertical_start] == ALIVE) { // left 
-        neighbors.push_back({ horizontal_start - 1,  vertical_start });
+    if (cellX > 0 && state_copy[cellX - 1][cellY] == ALIVE) { // left 
+        neighbors.push_back({ cellX - 1,  cellY });
     }
 #ifdef LOOPING
-    else if (horizontal_start == 0 && state_copy[horizontal - 1][vertical_start] == ALIVE) // looping left
+    else if (cellX == 0 && state_copy[maxX - 1][cellY] == ALIVE) // looping left
     {
-        neighbors.push_back({ horizontal - 1,  vertical_start });
+        neighbors.push_back({ maxX - 1,  cellY });
     }
 #endif
 
-    if (vertical_start > 0 && state_copy[horizontal_start][vertical_start - 1] == ALIVE) { // up
-        neighbors.push_back({ horizontal_start,  vertical_start - 1 });
+    if (cellY > 0 && state_copy[cellX][cellY - 1] == ALIVE) { // up
+        neighbors.push_back({ cellX,  cellY - 1 });
     }
 #ifdef LOOPING
-    else if (vertical_start == 0 && state_copy[horizontal_start][vertical - 1] == ALIVE) // looping up
+    else if (cellY == 0 && state_copy[cellX][maxY - 1] == ALIVE) // looping up
     {
-        neighbors.push_back({ horizontal_start,  vertical - 1 });
+        neighbors.push_back({ cellX,  maxY - 1 });
     }
 #endif
 
-    if (horizontal_start < horizontal - 1 && state_copy[horizontal_start + 1][vertical_start] == ALIVE) { // right
-        neighbors.push_back({ horizontal_start + 1,  vertical_start });
+    if (cellX < maxX - 1 && state_copy[cellX + 1][cellY] == ALIVE) { // right
+        neighbors.push_back({ cellX + 1,  cellY });
     }
 #ifdef LOOPING
-    else if (horizontal_start == horizontal - 1 && state_copy[0][vertical_start] == ALIVE) // looping right
+    else if (cellX == maxX - 1 && state_copy[0][cellY] == ALIVE) // looping right
     {
-        neighbors.push_back({ 0,  vertical_start });
+        neighbors.push_back({ 0,  cellY });
     }
 #endif
 
-    if (vertical_start < vertical - 1 && state_copy[horizontal_start][vertical_start + 1] == ALIVE) { // down
-        neighbors.push_back({ horizontal_start,  vertical_start + 1 });
+    if (cellY < maxY - 1 && state_copy[cellX][cellY + 1] == ALIVE) { // down
+        neighbors.push_back({ cellX,  cellY + 1 });
     }
 #ifdef LOOPING
-    else if (vertical_start == vertical - 1 && state_copy[horizontal_start][0] == ALIVE) // looping down
+    else if (cellY == maxY - 1 && state_copy[cellX][0] == ALIVE) // looping down
     {
-        neighbors.push_back({ horizontal_start,  0 });
+        neighbors.push_back({ cellX,  0 });
     }
 #endif
 
-    if (horizontal_start > 0 && vertical_start > 0
-        && state_copy[horizontal_start - 1][vertical_start - 1] == ALIVE) { // top left
-        neighbors.push_back({ horizontal_start - 1,  vertical_start - 1 });
+    if (cellX > 0 && cellY > 0
+        && state_copy[cellX - 1][cellY - 1] == ALIVE) { // top left
+        neighbors.push_back({ cellX - 1,  cellY - 1 });
     }
 #ifdef LOOPING
-    else if (horizontal_start == 0 && vertical_start > 0 // x out of bounds
-        && state_copy[horizontal - 1][vertical_start - 1] == ALIVE)
+    else if (cellX == 0 && cellY > 0 // x out of bounds
+        && state_copy[maxX - 1][cellY - 1] == ALIVE)
     {
-        neighbors.push_back({ horizontal - 1,  vertical_start - 1 });
+        neighbors.push_back({ maxX - 1,  cellY - 1 });
     }
-    else if (horizontal_start > 0 && vertical_start == 0 // y out of bounds
-        && state_copy[horizontal_start - 1][vertical - 1] == ALIVE)
+    else if (cellX > 0 && cellY == 0 // y out of bounds
+        && state_copy[cellX - 1][maxY - 1] == ALIVE)
     {
-        neighbors.push_back({ horizontal_start - 1,  vertical - 1 });
+        neighbors.push_back({ cellX - 1,  maxY - 1 });
     }
-    else if (horizontal_start == 0 && vertical_start == 0 // both out of bounds
-        && state_copy[horizontal - 1][vertical - 1] == ALIVE)
+    else if (cellX == 0 && cellY == 0 // both out of bounds
+        && state_copy[maxX - 1][maxY - 1] == ALIVE)
     {
-        neighbors.push_back({ horizontal - 1,  vertical - 1 });
+        neighbors.push_back({ maxX - 1,  maxY - 1 });
     }
 #endif
 
-    if (horizontal_start < horizontal - 1 && vertical_start < vertical - 1 // bottom right
-        && state_copy[horizontal_start + 1][vertical_start + 1] == ALIVE) {
-        neighbors.push_back({ horizontal_start + 1,  vertical_start + 1 });
+    if (cellX < maxX - 1 && cellY < maxY - 1 // bottom right
+        && state_copy[cellX + 1][cellY + 1] == ALIVE) {
+        neighbors.push_back({ cellX + 1,  cellY + 1 });
     }
 #ifdef LOOPING
-    else if (horizontal_start == horizontal - 1 && vertical_start < vertical - 1 // x out of bounds
-        && state_copy[0][vertical_start + 1] == ALIVE)
+    else if (cellX == maxX - 1 && cellY < maxY - 1 // x out of bounds
+        && state_copy[0][cellY + 1] == ALIVE)
     {
-        neighbors.push_back({ 0,  vertical_start + 1 });
+        neighbors.push_back({ 0,  cellY + 1 });
     }
-    else if (horizontal_start < horizontal - 1 && vertical_start == vertical - 1 // y out of bounds
-        && state_copy[horizontal_start + 1][0] == ALIVE)
+    else if (cellX < maxX - 1 && cellY == maxY - 1 // y out of bounds
+        && state_copy[cellX + 1][0] == ALIVE)
     {
-        neighbors.push_back({ horizontal_start + 1,  0 });
+        neighbors.push_back({ cellX + 1,  0 });
     }
-    else if (horizontal_start == horizontal - 1 && vertical_start == vertical - 1 // both out of bounds
+    else if (cellX == maxX - 1 && cellY == maxY - 1 // both out of bounds
         && state_copy[0][0] == ALIVE)
     {
         neighbors.push_back({ 0,  0 });
     }
 #endif
 
-    if (horizontal_start < horizontal - 1 && vertical_start > 0 // top right
-        && state_copy[horizontal_start + 1][vertical_start - 1] == ALIVE) {
-        neighbors.push_back({ horizontal_start + 1,  vertical_start - 1 });
+    if (cellX < maxX - 1 && cellY > 0 // top right
+        && state_copy[cellX + 1][cellY - 1] == ALIVE) {
+        neighbors.push_back({ cellX + 1,  cellY - 1 });
     }
 #ifdef LOOPING
-    else if (horizontal_start == horizontal - 1 && vertical_start > 0 // x out of bounds
-        && state_copy[0][vertical_start - 1] == ALIVE)
+    else if (cellX == maxX - 1 && cellY > 0 // x out of bounds
+        && state_copy[0][cellY - 1] == ALIVE)
     {
-        neighbors.push_back({ 0,  vertical_start - 1 });
+        neighbors.push_back({ 0,  cellY - 1 });
     }
-    else if (horizontal_start < horizontal - 1 && vertical_start == 0 // y out of bounds
-        && state_copy[horizontal_start + 1][vertical - 1] == ALIVE)
+    else if (cellX < maxX - 1 && cellY == 0 // y out of bounds
+        && state_copy[cellX + 1][maxY - 1] == ALIVE)
     {
-        neighbors.push_back({ horizontal_start + 1,  vertical - 1 });
+        neighbors.push_back({ cellX + 1,  maxY - 1 });
     }
-    else if (horizontal_start == horizontal - 1 && vertical_start == 0 // both out of bounds
-        && state_copy[0][vertical - 1] == ALIVE)
+    else if (cellX == maxX - 1 && cellY == 0 // both out of bounds
+        && state_copy[0][maxY - 1] == ALIVE)
     {
-        neighbors.push_back({ 0,  vertical - 1 });
+        neighbors.push_back({ 0,  maxY - 1 });
     }
 #endif
 
-    if (horizontal_start > 0 && vertical_start < vertical - 1 // bottom left
-        && state_copy[horizontal_start - 1][vertical_start + 1] == ALIVE) {
-        neighbors.push_back({ horizontal_start - 1,  vertical_start + 1 });
+    if (cellX > 0 && cellY < maxY - 1 // bottom left
+        && state_copy[cellX - 1][cellY + 1] == ALIVE) {
+        neighbors.push_back({ cellX - 1,  cellY + 1 });
     }
 #ifdef LOOPING
-    else if (horizontal_start == 0 && vertical_start < vertical - 1 // x out of bounds
-        && state_copy[horizontal - 1][vertical_start + 1] == ALIVE)
+    else if (cellX == 0 && cellY < maxY - 1 // x out of bounds
+        && state_copy[maxX - 1][cellY + 1] == ALIVE)
     {
-        neighbors.push_back({ horizontal - 1,  vertical_start + 1 });
+        neighbors.push_back({ maxX - 1,  cellY + 1 });
     }
-    else if (horizontal_start > 0 && vertical_start == vertical - 1 // y out of bounds 
-        && state_copy[horizontal_start - 1][0] == ALIVE)
+    else if (cellX > 0 && cellY == maxY - 1 // y out of bounds 
+        && state_copy[cellX - 1][0] == ALIVE)
     {
-        neighbors.push_back({ horizontal_start - 1, 0 });
+        neighbors.push_back({ cellX - 1, 0 });
     }
-    else if (horizontal_start == 0 && vertical_start == vertical - 1 // both out of bounds 
-        && state_copy[horizontal - 1][0] == ALIVE)
+    else if (cellX == 0 && cellY == maxY - 1 // both out of bounds 
+        && state_copy[maxX - 1][0] == ALIVE)
     {
-        neighbors.push_back({ horizontal - 1,  0 });
+        neighbors.push_back({ maxX - 1,  0 });
     }
 #endif
+}
+
+// finds a cluster of points connected to the given coordinates and saves them to the given vector
+void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, vector<point>& current_cluster) {
+
+    if (state_copy[cellX][cellY] == DEAD) // prevents 'double tagging' a cell based on the order they recurse at, still calls the function tho
+    {
+        return;
+    }
+
+    point current_point = point{ cellX, cellY };
+    current_cluster.push_back(current_point);
+    state_copy[cellX][cellY] = DEAD; // marking saved cells as dead
+
+    vector<point> neighbors;
+
+    FillNeighborVector(state_copy, maxX, maxY, cellX, cellY, neighbors);
 
     while (!neighbors.empty())
     {
         // recourse using a neigboring live cells' location
-        FindCluster(state_copy, horizontal, vertical, neighbors.back().horizontal, neighbors.back().vertical, current_cluster);
+        FindCluster(state_copy, maxX, maxY, neighbors.back().maxX, neighbors.back().maxY, current_cluster);
         neighbors.pop_back(); // remove the last value
     }
 }
 
 
 // finds all clusters in the given state and saves them to the given vector
-void FindClusters(bool** state, int horizontal, int vertical, vector<vector<point>>& clusters) {
+void FindClusters(bool** state, int maxX, int maxY, vector<vector<point>>& clusters) {
 
-    bool** state_copy = CopyMatrix(state, horizontal, vertical);
+    bool** state_copy = CopyMatrix(state, maxX, maxY);
 
-    for (int cellX = 0; cellX < horizontal; cellX++)
+    for (int cellX = 0; cellX < maxX; cellX++)
     {
-        for (int cellY = 0; cellY < vertical; cellY++)
+        for (int cellY = 0; cellY < maxY; cellY++)
         {
             if (state_copy[cellX][cellY] == ALIVE)
             {
                 clusters.push_back(vector<point>{});
-                FindCluster(state_copy, horizontal, vertical, cellX, cellY, clusters.back());
+                FindCluster(state_copy, maxX, maxY, cellX, cellY, clusters.back());
                 if (clusters.back().size() <= MIN_SURVIVAL) // clusters of less than the constant CANNOT survive, no matter the arrangment
                 {
                     clusters.pop_back();
@@ -390,29 +395,29 @@ void FindClusters(bool** state, int horizontal, int vertical, vector<vector<poin
 void FindClusterOutline(vector<point>& cluster, sector& outline) {
     point current_point;
 
-    outline.horizontal_start = INT_MAX;
-    outline.horizontal_end = INT_MIN;
-    outline.vertical_start = INT_MAX;
-    outline.vertical_end = INT_MIN;
+    outline.startX = INT_MAX;
+    outline.endX = INT_MIN;
+    outline.startY = INT_MAX;
+    outline.endY = INT_MIN;
 
     while (!cluster.empty())
     {
         current_point = cluster.back();
 
-        if (outline.horizontal_start > current_point.horizontal) {
-            outline.horizontal_start = current_point.horizontal;
+        if (outline.startX > current_point.maxX) {
+            outline.startX = current_point.maxX;
         }
 
-        if (outline.horizontal_end < current_point.horizontal) {
-            outline.horizontal_end = current_point.horizontal;
+        if (outline.endX < current_point.maxX) {
+            outline.endX = current_point.maxX;
         }
 
-        if (outline.vertical_start > current_point.vertical) {
-            outline.vertical_start = current_point.vertical;
+        if (outline.startY > current_point.maxY) {
+            outline.startY = current_point.maxY;
         }
 
-        if (outline.vertical_end < current_point.vertical) {
-            outline.vertical_end = current_point.vertical;
+        if (outline.endY < current_point.maxY) {
+            outline.endY = current_point.maxY;
         }
 
         cluster.pop_back();
@@ -430,8 +435,8 @@ void FindClusterOutlines(vector<vector<point>>& clusters, vector<sector>& outlin
 }
 
 
-// Get the horizontal and vertical screen sizes in pixel
-void GetDesktopResolution(int& horizontal, int& vertical)
+// Get the maxX and maxY screen sizes in pixel
+void GetDesktopResolution(int& maxX, int& maxY)
 {
     RECT desktop;
     // Get a handle to the desktop window
@@ -440,9 +445,9 @@ void GetDesktopResolution(int& horizontal, int& vertical)
     GetWindowRect(hDesktop, &desktop);
     // The top left corner will have coordinates (0,0)
     // and the bottom right corner will have coordinates
-    // (horizontal, vertical)
-    horizontal = desktop.right;
-    vertical = desktop.bottom;
+    // (maxX, maxY)
+    maxX = desktop.right;
+    maxY = desktop.bottom;
 }
 
 void ShowConsoleCursor(bool showFlag)
@@ -457,7 +462,7 @@ void ShowConsoleCursor(bool showFlag)
 }
 
 #ifdef MULTIRENDER
-void RenderThread(bool** current_state, int vertical, int begin, int end, bool** old_state, bool initial) {
+void RenderThread(bool** current_state, int maxY, int begin, int end, bool** old_state, bool initial) {
     //Get a console handle
     HWND myconsole = GetConsoleWindow();
     //Get a handle to device context
@@ -465,7 +470,7 @@ void RenderThread(bool** current_state, int vertical, int begin, int end, bool**
 
     for (int cellX = begin; cellX < end; cellX++)
     {
-        for (int cellY = 0; cellY < vertical; cellY++)
+        for (int cellY = 0; cellY < maxY; cellY++)
         {
             if (initial || old_state[cellX][cellY] != current_state[cellX][cellY]) { // will not update uncahnged cells
                 if (current_state[cellX][cellY] == ALIVE)
@@ -484,22 +489,22 @@ void RenderThread(bool** current_state, int vertical, int begin, int end, bool**
 #endif // MULTIRENDER
 
 
-void UpdateScreen(bool** current_state, int horizontal, int vertical, bool** old_state = NULL, bool initial = true) {
+void UpdateScreen(bool** current_state, int maxX, int maxY, bool** old_state = NULL, bool initial = true) {
 #ifdef MULTIRENDER
     unsigned int num_of_threads = thread::hardware_concurrency();
     thread* threads = new thread[num_of_threads];
-    const unsigned int render_zone_size = horizontal / num_of_threads;
-    unsigned int first_offset = horizontal - render_zone_size * num_of_threads;
+    const unsigned int render_zone_size = maxX / num_of_threads;
+    unsigned int first_offset = maxX - render_zone_size * num_of_threads;
     int begin = 0;
     int end = first_offset + render_zone_size; // the first zone takes the rounding error
 
-    threads[0] = thread(RenderThread, current_state, vertical, begin, end, old_state, initial);
+    threads[0] = thread(RenderThread, current_state, maxY, begin, end, old_state, initial);
 
     for (int created = 1; created < num_of_threads; created++) // !IMPORTANT! set to 1 to skip the first thread creation
     {
         begin = end;
         end += render_zone_size;
-        threads[created] = thread(RenderThread, current_state, vertical, begin, end, old_state, initial);
+        threads[created] = thread(RenderThread, current_state, maxY, begin, end, old_state, initial);
     }
 
     for (int joined = 0; joined < num_of_threads; joined++) // !IMPORTANT! set to 1 to skip the first thread creation
@@ -514,9 +519,9 @@ void UpdateScreen(bool** current_state, int horizontal, int vertical, bool** old
     //Get a handle to device context
     HDC mydc = GetDC(myconsole);
 
-    for (int cellX = 0; cellX < horizontal; cellX++)
+    for (int cellX = 0; cellX < maxX; cellX++)
     {
-        for (int cellY = 0; cellY < vertical; cellY++)
+        for (int cellY = 0; cellY < maxY; cellY++)
         {
             if (initial || old_state[cellX][cellY] != current_state[cellX][cellY]) { // will not update uncahnged cells
                 if (current_state[cellX][cellY] == ALIVE)
@@ -534,9 +539,9 @@ void UpdateScreen(bool** current_state, int horizontal, int vertical, bool** old
 #endif // LINEAR
 
 #ifdef TEXTPRINT
-    for (int celly = 0; celly < vertical; celly++) // y dominaant for newlines
+    for (int celly = 0; celly < maxY; celly++) // y dominaant for newlines
     {
-        for (int cellx = 0; cellx < horizontal; cellx++)
+        for (int cellx = 0; cellx < maxX; cellx++)
         {
             if (current_state[cellx][celly] == ALIVE)
             {
@@ -563,27 +568,27 @@ void DrawSectorOutline(sector sector) {
     HDC mydc = GetDC(myconsole);
 
     int cellX;
-    int cellY = sector.vertical_start - 1;
+    int cellY = sector.startY - 1;
 
-    for (cellX = sector.horizontal_start - 1; cellX <= sector.horizontal_end + 1; cellX++) // top line
+    for (cellX = sector.startX - 1; cellX <= sector.endX + 1; cellX++) // top line
     {
         SetPixel(mydc, cellX, cellY, COLOR_GREEN);
     }
 
-    cellY = sector.vertical_end + 1;
-    for (cellX = sector.horizontal_start - 1; cellX <= sector.horizontal_end + 1; cellX++) // bottom line
+    cellY = sector.endY + 1;
+    for (cellX = sector.startX - 1; cellX <= sector.endX + 1; cellX++) // bottom line
     {
         SetPixel(mydc, cellX, cellY, COLOR_GREEN);
     }
 
-    cellX = sector.horizontal_start - 1;
-    for (cellY = sector.vertical_start - 1; cellY <= sector.vertical_end + 1; cellY++) // left line
+    cellX = sector.startX - 1;
+    for (cellY = sector.startY - 1; cellY <= sector.endY + 1; cellY++) // left line
     {
         SetPixel(mydc, cellX, cellY, COLOR_GREEN);
     }
 
-    cellX = sector.horizontal_end + 1;
-    for (cellY = sector.vertical_start - 1; cellY <= sector.vertical_end + 1; cellY++) // right line
+    cellX = sector.endX + 1;
+    for (cellY = sector.startY - 1; cellY <= sector.endY + 1; cellY++) // right line
     {
         SetPixel(mydc, cellX, cellY, COLOR_GREEN);
     }
@@ -613,27 +618,27 @@ void ClearSectorOutline(sector& sector) {
     HDC mydc = GetDC(myconsole);
 
     int cellX;
-    int cellY = sector.vertical_start - 1;
+    int cellY = sector.startY - 1;
 
-    for (cellX = sector.horizontal_start - 1; cellX <= sector.horizontal_end + 1; cellX++) // top line
+    for (cellX = sector.startX - 1; cellX <= sector.endX + 1; cellX++) // top line
     {
         SetPixel(mydc, cellX, cellY, COLOR_DEAD);
     }
 
-    cellY = sector.vertical_end + 1;
-    for (cellX = sector.horizontal_start - 1; cellX <= sector.horizontal_end + 1; cellX++) // bottom line
+    cellY = sector.endY + 1;
+    for (cellX = sector.startX - 1; cellX <= sector.endX + 1; cellX++) // bottom line
     {
         SetPixel(mydc, cellX, cellY, COLOR_DEAD);
     }
 
-    cellX = sector.horizontal_start - 1;
-    for (cellY = sector.vertical_start - 1; cellY <= sector.vertical_end + 1; cellY++) // left line
+    cellX = sector.startX - 1;
+    for (cellY = sector.startY - 1; cellY <= sector.endY + 1; cellY++) // left line
     {
         SetPixel(mydc, cellX, cellY, COLOR_DEAD);
     }
 
-    cellX = sector.horizontal_end + 1;
-    for (cellY = sector.vertical_start - 1; cellY <= sector.vertical_end + 1; cellY++) // right line
+    cellX = sector.endX + 1;
+    for (cellY = sector.startY - 1; cellY <= sector.endY + 1; cellY++) // right line
     {
         SetPixel(mydc, cellX, cellY, COLOR_DEAD);
     }
@@ -656,96 +661,84 @@ void ClearSectorOutlines(vector<sector>& sectors) {
     ReleaseDC(myconsole, mydc);
 }
 
-bool CellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vertical) {
+bool CellStatus(bool** old_state, int cellX, int cellY, int maxX, int maxY) {
     int neighbors = 0;
     bool status = DEAD;
 
 #ifdef LOOPING
-    // normal checks
-    int diffX;
-    int diffY;
-    int currX;
-    int currY;
-    for (diffX = -1; diffX <= 1; diffX++)
-    {
-        for (diffY = -1; diffY <= 1; diffY++)
-        {
-            currX = cellX + diffX;
-            currY = cellY + diffY;
-            if (currX >= 0 && currY >= 0
-                && currX < horizontal && currY < vertical
-                && old_state[currX][currY] == ALIVE) {
-                neighbors++;
-            }
-        }
-    }
-
-
-    // streight loop checks
-    if (cellX == 0 && old_state[horizontal - 1][cellY] == ALIVE) // looping left
+    // counting neighbors, looping edges
+    if ((cellX > 0 && old_state[cellX - 1][cellY] == ALIVE) || // left
+        (cellX == 0 && old_state[maxX - 1][cellY] == ALIVE))
         neighbors++;
-    if (cellY == 0 && old_state[cellX][vertical - 1] == ALIVE) // looping up
+    if ((cellY > 0 && old_state[cellX][cellY - 1] == ALIVE) || // up
+        (cellY == 0 && old_state[cellX][maxY - 1] == ALIVE))
         neighbors++;
-    if (cellX == horizontal - 1 && old_state[0][cellY] == ALIVE) // looping right
+    if ((cellX < maxX - 1 && old_state[cellX + 1][cellY] == ALIVE) ||  // right
+        (cellX == maxX - 1 && old_state[0][cellY] == ALIVE))
         neighbors++;
-    if (cellY == vertical - 1 && old_state[cellX][0] == ALIVE) // looping down
+    if ((cellY < maxY - 1 && old_state[cellX][cellY + 1] == ALIVE) || // down
+        (cellY == maxY - 1 && old_state[cellX][0] == ALIVE))
         neighbors++;
-
-    // top left loop checks
-    if ((cellX == 0 && cellY > 0 // x out of bounds
-            && old_state[horizontal - 1][cellY - 1] == ALIVE) ||
+    if ((cellX > 0 && cellY > 0
+        && old_state[cellX - 1][cellY - 1] == ALIVE) || // top left
+        (cellX == 0 && cellY > 0 // x out of bounds
+            && old_state[maxX - 1][cellY - 1] == ALIVE) ||
         (cellX > 0 && cellY == 0 // y out of bounds
-            && old_state[cellX - 1][vertical - 1] == ALIVE) ||
+            && old_state[cellX - 1][maxY - 1] == ALIVE) ||
         (cellX == 0 && cellY == 0 // both out of bounds
-            && old_state[horizontal - 1][vertical - 1] == ALIVE))
+            && old_state[maxX - 1][maxY - 1] == ALIVE))
         neighbors++;
-
-    // bottom right loop checks
-    if ((cellX == horizontal - 1 && cellY < vertical - 1 // x out of bounds
+    if ((cellX < maxX - 1 && cellY < maxY - 1 // bottom right
+        && old_state[cellX + 1][cellY + 1] == ALIVE) ||
+        (cellX == maxX - 1 && cellY < maxY - 1 // x out of bounds
             && old_state[0][cellY + 1] == ALIVE) ||
-        (cellX < horizontal - 1 && cellY == vertical - 1 // y out of bounds
+        (cellX < maxX - 1 && cellY == maxY - 1 // y out of bounds
             && old_state[cellX + 1][0] == ALIVE) ||
-        (cellX == horizontal - 1 && cellY == vertical - 1 // both out of bounds
+        (cellX == maxX - 1 && cellY == maxY - 1 // both out of bounds
             && old_state[0][0] == ALIVE))
         neighbors++;
-
-    // top right loop checks
-    if ((cellX == horizontal - 1 && cellY > 0 // x out of bounds
+    if ((cellX < maxX - 1 && cellY > 0 // top right
+        && old_state[cellX + 1][cellY - 1] == 1) ||
+        (cellX == maxX - 1 && cellY > 0 // x out of bounds
             && old_state[0][cellY - 1] == ALIVE) ||
-        (cellX < horizontal - 1 && cellY == 0 // y out of bounds
-            && old_state[cellX + 1][vertical - 1] == ALIVE) ||
-        (cellX == horizontal - 1 && cellY == 0 // both out of bounds
-            && old_state[0][vertical - 1] == ALIVE))
+        (cellX < maxX - 1 && cellY == 0 // y out of bounds
+            && old_state[cellX + 1][maxY - 1] == ALIVE) ||
+        (cellX == maxX - 1 && cellY == 0 // both out of bounds
+            && old_state[0][maxY - 1] == ALIVE))
         neighbors++;
-
-    // bottom left loop checks
-    if ((cellX == 0 && cellY < vertical - 1 // x out of bounds
-            && old_state[horizontal - 1][cellY + 1] == ALIVE) ||
-        (cellX > 0 && cellY == vertical - 1 // y out of bounds 
+    if ((cellX > 0 && cellY < maxY - 1 // bottom left
+        && old_state[cellX - 1][cellY + 1] == 1) ||
+        (cellX == 0 && cellY < maxY - 1 // x out of bounds
+            && old_state[maxX - 1][cellY + 1] == ALIVE) ||
+        (cellX > 0 && cellY == maxY - 1 // y out of bounds 
             && old_state[cellX - 1][0] == ALIVE) ||
-        (cellX == 0 && cellY == vertical - 1 // both out of bounds 
-            && old_state[horizontal - 1][0] == ALIVE))
+        (cellX == 0 && cellY == maxY - 1 // both out of bounds 
+            && old_state[maxX - 1][0] == ALIVE))
         neighbors++;
 #endif // LOOPING
 
 #ifdef TRAPPED
-    int diffX;
-    int diffY;
-    int currX;
-    int currY;
-    for (diffX = -1; diffX <= 1; diffX++)
-    {
-        for (diffY = -1; diffY <= 1; diffY++)
-        {
-            currX = cellX + diffX;
-            currY = cellY + diffY;
-            if (currX >= 0 && currY >= 0 &&
-                currX < horizontal && currY < vertical &&
-                old_state[currX][currY] == ALIVE) {
-                neighbors++;
-            }
-        }
-    }
+    // counting neighbors with bound limits
+    if (cellX > 0 && old_state[cellX - 1][cellY] == 1)
+        neighbors++;
+    if (cellY > 0 && old_state[cellX][cellY - 1] == 1)
+        neighbors++;
+    if (cellX > 0 && cellY > 0
+        && old_state[cellX - 1][cellY - 1] == 1)
+        neighbors++;
+    if (cellX < maxX - 1 && old_state[cellX + 1][cellY] == 1)
+        neighbors++;
+    if (cellY < maxY - 1 && old_state[cellX][cellY + 1] == 1)
+        neighbors++;
+    if (cellX < maxX - 1 && cellY < maxY - 1
+        && old_state[cellX + 1][cellY + 1] == 1)
+        neighbors++;
+    if (cellX < maxX - 1 && cellY > 0
+        && old_state[cellX + 1][cellY - 1] == 1)
+        neighbors++;
+    if (cellX > 0 && cellY < maxY - 1
+        && old_state[cellX - 1][cellY + 1] == 1)
+        neighbors++;
 #endif // TRAPPED
 
 
@@ -768,22 +761,44 @@ bool CellStatus(bool** old_state, int cellX, int cellY, int horizontal, int vert
     return status;
 }
 
+void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, int maxX, int maxY, int cellX, int cellY) {
+    old_copy[cellX][cellY] = DEAD; // marking itself as dead
 
-void UpdateStateMatrix(bool** old_state, bool** current_state, int horizontal, int vertical) {
-    for (int cellX = 0; cellX < horizontal; cellX++)
+    vector<point> neighbors;
+
+    FillNeighborVector(old_copy, maxX, maxY, cellX, cellY, neighbors);
+
+    while (!neighbors.empty())
     {
-        for (int cellY = 0; cellY < vertical; cellY++)
+        // mark neighbors as dead for future checks
+        old_copy[neighbors.back().maxX][neighbors.back().maxY] = DEAD;
+
+        // update neighbors in the next state
+        current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
+        neighbors.pop_back(); // remove the proccesed neighbor value
+    }
+}
+
+void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY) {
+    bool** old_copy = CopyMatrix(old_state, maxX, maxY);
+    for (int cellX = 0; cellX < maxX; cellX++)
+    {
+        for (int cellY = 0; cellY < maxY; cellY++)
         {
-            current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, horizontal, vertical);
+            //if (old_copy[cellX][cellY] == ALIVE)
+            //{
+                current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
+                //UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY);
+            //}
         }
     }
 }
 
 // check if life has exausted itself in the system
-bool Extinction(bool** state, int horizontal, int vertical) {
-    for (int cellX = 0; cellX < horizontal; cellX++)
+bool Extinction(bool** state, int maxX, int maxY) {
+    for (int cellX = 0; cellX < maxX; cellX++)
     {
-        for (int cellY = 0; cellY < vertical; cellY++)
+        for (int cellY = 0; cellY < maxY; cellY++)
         {
             if (state[cellX][cellY] == ALIVE)
             {
@@ -796,10 +811,10 @@ bool Extinction(bool** state, int horizontal, int vertical) {
 }
 
 // checkes if the system reached a stable, static state
-bool Stasis(bool** old_state, bool** current_state, int horizontal, int vertical) {
-    for (int cellX = 0; cellX < horizontal; cellX++)
+bool Stasis(bool** old_state, bool** current_state, int maxX, int maxY) {
+    for (int cellX = 0; cellX < maxX; cellX++)
     {
-        for (int cellY = 0; cellY < vertical; cellY++)
+        for (int cellY = 0; cellY < maxY; cellY++)
         {
             if (old_state[cellX][cellY] != current_state[cellX][cellY])
             {
@@ -812,14 +827,14 @@ bool Stasis(bool** old_state, bool** current_state, int horizontal, int vertical
 }
 
 // checkes if the activity level in the system has dropped too low
-bool LowActivity(bool** old_state, bool** current_state, int horizontal, int vertical, float threshold = 1) {
-    const long total_cells = vertical * horizontal;
+bool LowActivity(bool** old_state, bool** current_state, int maxX, int maxY, float threshold = 1) {
+    const long total_cells = maxY * maxX;
     long cells_changed = 0;
     bool result = false;
 
-    for (int cellX = 0; cellX < horizontal; cellX++)
+    for (int cellX = 0; cellX < maxX; cellX++)
     {
-        for (int cellY = 0; cellY < vertical; cellY++)
+        for (int cellY = 0; cellY < maxY; cellY++)
         {
             if (old_state[cellX][cellY] != current_state[cellX][cellY])
             {
@@ -837,22 +852,22 @@ bool LowActivity(bool** old_state, bool** current_state, int horizontal, int ver
 }
 
 // checks all stop conditions for the current run
-bool EndOfCycle(bool** old_state, bool** current_state, int horizontal, int vertical) {
+bool EndOfCycle(bool** old_state, bool** current_state, int maxX, int maxY) {
     bool result = false;
 
 #ifdef EFFICENT
-    if (LowActivity(old_state, current_state, horizontal, vertical)) {
+    if (LowActivity(old_state, current_state, maxX, maxY)) {
         cout << "low activity" << endl;
         result = true;
     }
 #endif // EFFICENT
 
 #ifdef BRUTAL
-    if (Extinction(current_state, horizontal, vertical)) {
+    if (Extinction(current_state, maxX, maxY)) {
         cout << "life has beed wiped out" << endl;
         result = true;
     }
-    else if (Stasis(old_state, current_state, horizontal, vertical)) { // this is effectivly impossible
+    else if (Stasis(old_state, current_state, maxX, maxY)) { // this is effectivly impossible
         cout << "a static state has beed achived" << endl;
         result = true;
     }
@@ -862,13 +877,13 @@ bool EndOfCycle(bool** old_state, bool** current_state, int horizontal, int vert
 }
 
 // fil the first generation according to selecte ruels
-void Initialize(bool** current_state, int horizontal, int vertical) {
+void Initialize(bool** current_state, int maxX, int maxY) {
 #ifdef RANDOM
     // randomize the first generation
     srand(time(0));
-    for (int cellX = 0; cellX < horizontal; cellX++)
+    for (int cellX = 0; cellX < maxX; cellX++)
     {
-        for (int cellY = 0; cellY < vertical; cellY++)
+        for (int cellY = 0; cellY < maxY; cellY++)
         {
             if (rand() % INITIAL_LIFE_RATIO == 0)
             {
@@ -884,9 +899,9 @@ void Initialize(bool** current_state, int horizontal, int vertical) {
 
 #ifdef GLIDER
     //initialize an empty screen
-    for (int cellX = 0; cellX < horizontal; cellX++)
+    for (int cellX = 0; cellX < maxX; cellX++)
     {
-        for (int cellY = 0; cellY < vertical; cellY++)
+        for (int cellY = 0; cellY < maxY; cellY++)
         {
             current_state[cellX][cellY] = false;
         }
@@ -903,9 +918,9 @@ void Initialize(bool** current_state, int horizontal, int vertical) {
     sizeY /= 4;
 #endif // TEXTPRINT
 
-    for (offsetX = 0; offsetX + sizeX <= horizontal; offsetX += sizeX)
+    for (offsetX = 0; offsetX + sizeX <= maxX; offsetX += sizeX)
     {
-        for (offsetY = 0; offsetY + sizeY <= vertical; offsetY += sizeY)
+        for (offsetY = 0; offsetY + sizeY <= maxY; offsetY += sizeY)
         {
 
             switch (state)
@@ -964,8 +979,8 @@ bool HandleResponse(char response) {
     return result;
 }
 
-void OutLineCaller(bool** current_state, int horizontal, int  vertical, vector<vector<point>> clusters, vector<sector> outlines) {
-    FindClusters(current_state, horizontal, vertical, clusters);
+void OutLineCaller(bool** current_state, int maxX, int  maxY, vector<vector<point>> clusters, vector<sector> outlines) {
+    FindClusters(current_state, maxX, maxY, clusters);
     FindClusterOutlines(clusters, outlines);
     DrawSectorOutlines(outlines);
 }
@@ -980,26 +995,28 @@ int main()
 
 
     // get screen rezsolution
-    int horizontal = 0;
-    int vertical = 0;
+    int maxX = 0;
+    int maxY = 0;
 
 #ifdef NATIVE
-    GetDesktopResolution(horizontal, vertical);
+    GetDesktopResolution(maxX, maxY);
 #endif // NATIVE
 
 #ifdef FHD
-    horizontal = 1920;
-    vertical = 1080;
+    maxX = 1920;
+    maxY = 1080;
 #endif // FHD
 
 #ifdef TEXTPRINT
-    horizontal /= 40; // adapt to a managable size
-    vertical /= 40;
+    //maxX /= 40; // adapt to a managable size
+    //maxY /= 40;
+    maxX = 6;
+    maxY = 3;
 #endif // TEXTPRINT
 
 
-    bool** old_state = CreateMatrix<bool>(horizontal, vertical);
-    bool** current_state = CreateMatrix<bool>(horizontal, vertical);
+    bool** old_state = CreateMatrix<bool>(maxX, maxY);
+    bool** current_state = CreateMatrix<bool>(maxX, maxY);
     char response = 'y';
 
     vector<vector<point>> clusters;
@@ -1017,22 +1034,22 @@ int main()
 #endif // DOOMED
 
             // fill the sceeen according to settings
-            Initialize(current_state, horizontal, vertical);
+            Initialize(current_state, maxX, maxY);
 
             // initial render
-            UpdateScreen(current_state, horizontal, vertical);
+            UpdateScreen(current_state, maxX, maxY);
 
-            //OutLineCaller(current_state, horizontal, vertical, clusters, outlines);
+            //OutLineCaller(current_state, maxX, maxY, clusters, outlines);
 
-            while (!EndOfCycle(old_state, current_state, horizontal, vertical))
+            while (!EndOfCycle(old_state, current_state, maxX, maxY))
             {
                 //ClearSectorOutlines(outlines);
 
                 swap(old_state, current_state); // 'save' the old state without copying
-                UpdateStateMatrix(old_state, current_state, horizontal, vertical);
+                UpdateStateMatrix(old_state, current_state, maxX, maxY);
 
-                UpdateScreen(current_state, horizontal, vertical, old_state, false);
-                //OutLineCaller(current_state, horizontal, vertical, clusters, outlines);
+                UpdateScreen(current_state, maxX, maxY, old_state, false);
+                //OutLineCaller(current_state, maxX, maxY, clusters, outlines);
             }
 
 #ifdef UNCERTAIN
