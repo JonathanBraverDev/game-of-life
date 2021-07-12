@@ -343,9 +343,213 @@ void FindLivingNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int c
 #endif
 }
 
-// fills the given vector with all nearby living cells
-void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cellY, vector<point>& neighbors) {
+// fills the given array with all nearby living cells (mem leak)
+void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cellY, point* neighbors, bool* filled) {
+    int i = 0;
+    point tmp;
 
+    // counting neighbors, looping edges
+    filled[i] = false;
+    if (cellX > 0) { // left
+        tmp.cellX = cellX - 1;
+        tmp.cellY = cellY;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#ifdef LOOPING
+    else if (cellX == 0) // looping left
+    {
+        tmp.cellX = maxX - 1;
+        tmp.cellY = cellY;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#endif
+    i++;
+
+    filled[i] = false;
+    if (cellY > 0) { // up
+        tmp.cellX = cellX;
+        tmp.cellY = cellY - 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#ifdef LOOPING
+    else if (cellY == 0) // looping up
+    {
+        tmp.cellX = cellX;
+        tmp.cellY = maxY - 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#endif
+    i++;
+
+    filled[i] = false;
+    if (cellX < maxX - 1) { // right
+        tmp.cellX = cellX + 1;
+        tmp.cellY = cellY;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#ifdef LOOPING
+    else if (cellX == maxX - 1 && state_copy[0][cellY] == ALIVE) // looping right
+    {
+        tmp.cellX = 0;
+        tmp.cellY = cellY;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#endif
+    i++;
+
+    filled[i] = false;
+    if (cellY < maxY - 1) { // down
+        tmp.cellX = cellX;
+        tmp.cellY = cellY + 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#ifdef LOOPING
+    else if (cellY == maxY - 1) // looping down
+    {
+        tmp.cellX = cellX;
+        tmp.cellY = 0;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#endif
+    i++;
+
+    filled[i] = false;
+    if (cellX > 0 && cellY > 0) { // top left
+        tmp.cellX = cellX - 1;
+        tmp.cellY = cellY - 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#ifdef LOOPING
+    else if (cellX == 0 && cellY > 0) // x out of bounds
+    {
+        tmp.cellX = maxX - 1;
+        tmp.cellY = cellY - 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+    else if (cellX > 0 && cellY == 0) // y out of bounds
+    {
+        tmp.cellX = cellX - 1;
+        tmp.cellY = maxY - 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+    else if (cellX == 0 && cellY == 0) // both out of bounds
+    {
+        tmp.cellX = maxX - 1;
+        tmp.cellY = maxY - 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#endif
+    i++;
+
+    filled[i] = false;
+    if (cellX < maxX - 1 && cellY < maxY - 1) // bottom right
+    {
+        tmp.cellX = cellX + 1;
+        tmp.cellY = cellY + 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#ifdef LOOPING
+    else if (cellX == maxX - 1 && cellY < maxY - 1) // x out of bounds
+    {
+        tmp.cellX = 0;
+        tmp.cellY = cellY + 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+    else if (cellX < maxX - 1 && cellY == maxY - 1) // y out of bounds
+    {
+        tmp.cellX = cellX + 1;
+        tmp.cellY = 0;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+    else if (cellX == maxX - 1 && cellY == maxY - 1) // both out of bounds
+    {
+        tmp.cellX = 0;
+        tmp.cellY = 0;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#endif
+    i++;
+
+    filled[i] = false;
+    if (cellX < maxX - 1 && cellY > 0) // top right
+    {
+        tmp.cellX = cellX + 1;
+        tmp.cellY = cellY - 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#ifdef LOOPING
+    else if (cellX == maxX - 1 && cellY > 0) // x out of bounds
+    {
+        tmp.cellX = 0;
+        tmp.cellY = cellY - 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+    else if (cellX < maxX - 1 && cellY == 0) // y out of bounds
+    {
+        tmp.cellX = cellX + 1;
+        tmp.cellY = maxY - 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+    else if (cellX == maxX - 1 && cellY == 0) // both out of bounds
+    {
+        tmp.cellX = 0;
+        tmp.cellY = maxY - 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#endif
+    i++;
+
+    filled[i] = false;
+    if (cellX > 0 && cellY < maxY - 1) // bottom left
+    {
+        tmp.cellX = cellX - 1;
+        tmp.cellY = cellY + 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#ifdef LOOPING
+    else if (cellX == 0 && cellY < maxY - 1) // x out of bounds
+    {
+        tmp.cellX = maxX - 1;
+        tmp.cellY = cellY + 1;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+    else if (cellX > 0 && cellY == maxY - 1) // y out of bounds 
+    {
+        tmp.cellX = cellX - 1;
+        tmp.cellY = 0;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+    else if (cellX == 0 && cellY == maxY - 1) // both out of bounds 
+    {
+        tmp.cellX = maxX - 1;
+        tmp.cellY = 0;
+        neighbors[i] = tmp;
+        filled[i] = true;
+    }
+#endif
 }
 
 // finds a cluster of points connected to the given coordinates and saves them to the given vector
