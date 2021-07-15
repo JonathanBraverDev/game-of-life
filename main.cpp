@@ -17,15 +17,16 @@
 #define BRUTAL
 // EFFICENT will run until the activity drops low enogh to be boring
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
-#define LINEAR
+#define BITMAP
 // LINEAR will render the scren as a big chunk
 // MULTIRENDER will split rendering into a few columns
 // TEXTPRINT will print the grid in text instead of pixels at significantly reduced rez and speed
+// BITMAP will try to fill a bitmap and spit in into the screen instead of setpixeling
 #define UNCERTAIN
 // DOOMED will end the simulation after one iteration ends
 // UNCERTAIN will give the user a choise
 // RESURGENT will endlessly reset the simulation without confirmation
-#define TRAPPED
+#define LOOPING
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
 
@@ -37,7 +38,7 @@
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 10; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
 const bool ALIVE = true;
 const bool DEAD = false;
@@ -765,6 +766,41 @@ void UpdateScreen(bool** current_state, int maxX, int maxY, bool** old_state = N
     cout << endl;
 #endif // TEXTPRINT
 
+#ifdef BITMAP
+    //Get a console handle
+    HWND myconsole = GetConsoleWindow();
+    //Get a handle to device context
+    HDC mydc = GetDC(myconsole);
+
+    COLORREF* colors = (COLORREF*)calloc(maxX * maxY, sizeof(COLORREF));
+    for (int cellX = 0; cellX < maxX; cellX++)
+    {
+        for (int cellY = 0; cellY < maxY; cellY++)
+        {
+            if (current_state[cellX][cellY] == ALIVE)
+            {
+                colors[cellY * maxX + cellX] = COLOR_ALIVE;
+            }
+            else {
+                colors[cellY * maxX + cellX] = COLOR_DEAD;
+            }
+        }
+    }
+
+    HBITMAP bitmap = CreateBitmap(maxX, maxY, 1, 8 * 4, (void*)colors);
+
+    HDC scr = CreateCompatibleDC(mydc);
+
+    SelectObject(scr, bitmap);
+
+    BitBlt(mydc, 0, 0, maxX, maxY, scr, 0, 0, SRCCOPY);
+
+    DeleteObject(bitmap);
+    DeleteObject(scr);
+    delete[] colors;
+#endif // BITMAP
+
+
 #if defined(PATIENT) || defined(TEXTPRINT)
     Sleep(1500);
 #endif // defined(PATIENT) || defined(TEXTPRINT)
@@ -976,6 +1012,9 @@ bool CellStatus(bool** old_state, int cellX, int cellY, int maxX, int maxY) {
 
 void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, int maxX, int maxY, int cellX, int cellY) {
     old_copy[cellX][cellY] = DEAD; // marking itself as dead
+    point* neighbors = new point[8];
+    bool* filled = new bool[8];
+    FindAllNeighbors(old_copy, maxX, maxY, cellX, cellY, neighbors, filled);
 
     // counting neighbors, looping edges
     if (cellX > 0) { // left 
@@ -985,7 +1024,6 @@ void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, in
 #ifdef LOOPING
     else if (cellX == 0) // looping left
     {
-        neighbors.push_back({ maxX - 1,  cellY });
         old_copy[maxX - 1][cellY] = DEAD;
         current_state[maxX - 1][cellY] = CellStatus(old_state, maxX - 1, cellY, maxX, maxY);
     }
@@ -1080,13 +1118,11 @@ void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, in
 #ifdef LOOPING
     else if (cellX == maxX - 1 && cellY > 0) // x out of bounds
     {
-        neighbors.push_back({ 0,  cellY - 1 });
         old_copy[0][cellY - 1] = DEAD;
         current_state[0][cellY - 1] = CellStatus(old_state, 0, cellY - 1, maxX, maxY);
     }
     else if (cellX < maxX - 1 && cellY == 0) // y out of bounds
     {
-        neighbors.push_back({ cellX + 1,  maxY - 1 });
         old_copy[cellX + 1][maxY - 1] = DEAD;
         current_state[cellX + 1][maxY - 1] = CellStatus(old_state, cellX + 1, maxY - 1, maxX, maxY);
     }
@@ -1133,6 +1169,7 @@ void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, in
 
 void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY) {
     bool** old_copy = CopyMatrix(old_state, maxX, maxY);
+
     for (int cellX = 0; cellX < maxX; cellX++)
     {
         for (int cellY = 0; cellY < maxY; cellY++)
