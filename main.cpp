@@ -11,7 +11,7 @@
 #define FHD
 // FHD will force the screen to 1080p, windows scaling fucks up the automatic detection
 // NATIVE will allow adapting to the resolution of the display
-#define PATIENT
+#define NODELAY
 // PATIENT will wait before rendering each genereation
 // NODELAY will disable the sleep between renders
 #define BRUTAL
@@ -623,6 +623,9 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, ve
             FindCluster(state_copy, maxX, maxY, neighbors[i].cellX, neighbors[i].cellY, current_cluster);
         }
     }
+
+    delete[] neighbors;
+    delete[] filled;
 }
 
 
@@ -1192,6 +1195,9 @@ void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, in
         current_state[maxX - 1][0] = CellStatus(old_state, maxX - 1, 0, maxX, maxY);
     }
 #endif
+
+    delete[] neighbors;
+    delete[] filled;
 }
 
 void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY) {
@@ -1205,6 +1211,8 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
             }
         }
     }
+
+    DeleteMatrix<bool>(old_copy);
 }
 
 // check if life has exausted itself in the system
