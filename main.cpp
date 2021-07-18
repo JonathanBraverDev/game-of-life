@@ -11,7 +11,7 @@
 #define FHD
 // FHD will force the screen to 1080p, windows scaling fucks up the automatic detection
 // NATIVE will allow adapting to the resolution of the display
-#define NODELAY
+#define PATIENT
 // PATIENT will wait before rendering each genereation
 // NODELAY will disable the sleep between renders
 #define BRUTAL
@@ -83,8 +83,7 @@ const int OVERPOPULATION = 3;
 // Set colors
 const COLORREF COLOR_ALIVE = RGB(255, 255, 255);
 const COLORREF COLOR_DEAD = RGB(0, 0, 0);
-const COLORREF COLOR_RED = RGB(255, 0, 0);
-const COLORREF COLOR_GREEN = RGB(0, 255, 0);
+const COLORREF COLOR_BORDER = RGB(0, 255, 0);
 
 // Define structures
 struct snapshot
@@ -828,11 +827,6 @@ void UpdateScreen(bool** current_state, int maxX, int maxY, bool** old_state = N
     DeleteObject(scr);
     free(colors);
 #endif // BITMAP
-
-
-#if defined(PATIENT) || defined(TEXTPRINT)
-    Sleep(1500);
-#endif // defined(PATIENT) || defined(TEXTPRINT)
 }
 
 void DrawSectorOutline(sector sector, COLORREF* colors = nullptr, int maxX = 0, int maxY = 0) {
@@ -846,22 +840,22 @@ void DrawSectorOutline(sector sector, COLORREF* colors = nullptr, int maxX = 0, 
     int cellY = sector.startY - 1;
 
     for (cellX = sector.startX - 1; cellX <= sector.endX + 1; cellX++) { // top line
-        SetPixel(mydc, cellX, cellY, COLOR_GREEN);
+        SetPixel(mydc, cellX, cellY, COLOR_BORDER);
     }
 
     cellY = sector.endY + 1;
     for (cellX = sector.startX - 1; cellX <= sector.endX + 1; cellX++) { // bottom line
-        SetPixel(mydc, cellX, cellY, COLOR_GREEN);
+        SetPixel(mydc, cellX, cellY, COLOR_BORDER);
     }
 
     cellX = sector.startX - 1;
     for (cellY = sector.startY - 1; cellY <= sector.endY + 1; cellY++) { // left line]
-        SetPixel(mydc, cellX, cellY, COLOR_GREEN);
+        SetPixel(mydc, cellX, cellY, COLOR_BORDER);
     }
 
     cellX = sector.endX + 1;
     for (cellY = sector.startY - 1; cellY <= sector.endY + 1; cellY++) { // right line
-        SetPixel(mydc, cellX, cellY, COLOR_GREEN);
+        SetPixel(mydc, cellX, cellY, COLOR_BORDER);
     }
 
     ReleaseDC(myconsole, mydc);
@@ -874,7 +868,7 @@ void DrawSectorOutline(sector sector, COLORREF* colors = nullptr, int maxX = 0, 
     if (cellY >= 0) {
         for (cellX = sector.startX - 1; cellX <= sector.endX + 1; cellX++) { // top line
             if (cellX >= 0 && cellX < maxX) {
-                colors[cellY * maxX + cellX] = COLOR_GREEN;
+                colors[cellY * maxX + cellX] = COLOR_BORDER;
             }
         }
     }
@@ -883,7 +877,7 @@ void DrawSectorOutline(sector sector, COLORREF* colors = nullptr, int maxX = 0, 
     if (cellY < maxY) {
         for (cellX = sector.startX - 1; cellX <= sector.endX + 1; cellX++) { // bottom line
             if (cellX >= 0 && cellX < maxX) {
-                colors[cellY * maxX + cellX] = COLOR_GREEN;
+                colors[cellY * maxX + cellX] = COLOR_BORDER;
             }
         }
     }
@@ -892,7 +886,7 @@ void DrawSectorOutline(sector sector, COLORREF* colors = nullptr, int maxX = 0, 
     if (cellX >= 0) {
         for (cellY = sector.startY - 1; cellY <= sector.endY + 1; cellY++) { // left line
             if (cellY >= 0 && cellY < maxY) {
-                colors[cellY * maxX + cellX] = COLOR_GREEN;
+                colors[cellY * maxX + cellX] = COLOR_BORDER;
             }
         }
     }
@@ -901,7 +895,7 @@ void DrawSectorOutline(sector sector, COLORREF* colors = nullptr, int maxX = 0, 
     if (cellX < maxX) {
         for (cellY = sector.startY - 1; cellY <= sector.endY + 1; cellY++) { // right line
             if (cellY >= 0 && cellY < maxY) {
-                colors[cellY * maxX + cellX] = COLOR_GREEN;
+                colors[cellY * maxX + cellX] = COLOR_BORDER;
             }
         }
     }
@@ -1406,7 +1400,7 @@ void OutLineCaller(bool** current_state, int maxX, int  maxY) {
                     FindClusterOutline(cluster, outline);
                     DrawSectorOutline(outline, colors, maxX, maxY);
                 }
-                cluster.empty();
+                cluster.clear();
             }
         }
     }
@@ -1463,7 +1457,7 @@ int main() {
 #endif // UNCERTAIN
 
 #ifdef RESURGENT
-    while (true) {
+    while (true)
 #endif // RESURGENT
 #ifdef UNCERTAIN
         while (HandleResponse(response) != false)
@@ -1485,6 +1479,11 @@ int main() {
             OutLineCaller(current_state, maxX, maxY);
 
             while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 100) {
+
+#if defined(PATIENT) || defined(TEXTPRINT)
+                Sleep(1500);
+#endif // defined(PATIENT) || defined(TEXTPRINT)
+
                 gen++;
                 initial = false;
                 //ClearSectorOutlines(outlines);
