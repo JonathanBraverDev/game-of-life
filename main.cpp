@@ -13,6 +13,7 @@
 // NATIVE will allow adapting to the resolution of the display
 #define NODELAY
 // PATIENT will wait before rendering each genereation
+// SCENIC will slow the rendering enough for comftable viewing
 // NODELAY will disable the sleep between renders
 #define BRUTAL
 // EFFICENT will run until the activity drops low enogh to be boring
@@ -31,7 +32,9 @@
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
 #define NOOUTLINES
 // NOOUTLINES will not show outlines
-// OUTLINES will outline clusters who are expected to survive
+// SURVIVING will outline clusters who are expected to survive
+// NOTABLE will outline clusters with more likly activity
+// LARGE will outline clusters of significant size
 
 #define NORMAL
 // NORMAL will set the survival parameters to their respective defaults
@@ -863,10 +866,8 @@ bool CellStatus(bool** old_state, int cellX, int cellY, int maxX, int maxY) {
 }
 
 // updates the neighbors of the given cell
-void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, int maxX, int maxY, int cellX, int cellY) {
+void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, int maxX, int maxY, int cellX, int cellY, point* neighbors, bool* filled) {
     old_copy[cellX][cellY] = DEAD; // marking itself as dead
-    point* neighbors = new point[8];
-    bool* filled = new bool[8];
     int currX;
     int currY;
     FindAllNeighbors(old_copy, maxX, maxY, cellX, cellY, neighbors, filled);
@@ -879,25 +880,26 @@ void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, in
             current_state[currX][currY] = CellStatus(old_state, currX, currY, maxX, maxY);
         }
     }
-
-    delete[] neighbors;
-    delete[] filled;
 }
 
 // updates the world to the next iteration
 void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY) {
     bool** old_copy = CopyMatrix(old_state, maxX, maxY);
+    point* neighbors = new point[8]; // move to parent
+    bool* filled = new bool[8];
 
     for (int cellX = 0; cellX < maxX; cellX++) {
         for (int cellY = 0; cellY < maxY; cellY++) {
             if (old_copy[cellX][cellY] == ALIVE) {
                 current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
-                UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY);
+                UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY, neighbors, filled);
             }
         }
     }
 
     DeleteMatrix<bool>(old_copy);
+    delete[] neighbors;
+    delete[] filled;
 }
 
 // check if life has exausted itself in the system
@@ -1084,12 +1086,26 @@ void OutLineCaller(bool** current_state, int maxX, int  maxY) {
     vector<point> cluster;
     sector outline;
 
+    int pass_size = 0;
+
+#ifdef SURVIVING
+    pass_size = MIN_SURVIVAL;
+#endif // SURVIVING
+
+#ifdef NOTABLE
+    pass_size = OVERPOPULATION;
+#endif // NOTABLE
+
+#ifdef LARGE
+    pass_size = OVERPOPULATION * 2;
+#endif // LARGE
+
     // add outlines one by one
     for (int cellX = 0; cellX < maxX; cellX++) {
         for (int cellY = 0; cellY < maxY; cellY++) {
             if (state_copy[cellX][cellY] == ALIVE) {
                 FindCluster(state_copy, maxX, maxY, cellX, cellY, cluster);
-                if (cluster.size() > MIN_SURVIVAL) { // clusters of less than the constant CANNOT survive, no matter the arrangment
+                if (cluster.size() > pass_size) { // clusters of less than the constant CANNOT survive, no matter the arrangment
                     FindClusterOutline(cluster, outline);
                     DrawSectorOutline(outline, colors, maxX, maxY);
                 }
@@ -1117,7 +1133,7 @@ int main() {
     SetConsoleDisplayMode(GetStdHandle(STD_OUTPUT_HANDLE), CONSOLE_FULLSCREEN_MODE, 0);
     ShowScrollBar(GetConsoleWindow(), SB_VERT, 0);
     ShowConsoleCursor(false);
-    Sleep(1500);
+    Sleep(1500); // idea: is this delay pointelss wiht bitmap rendering?
 
     // get screen rezsolution
     int maxX = 0;
@@ -1167,17 +1183,21 @@ int main() {
             gen = 0;
 
             // initial render
-#ifdef OUTLINES
+#ifndef NOOUTLINES
             OutLineCaller(current_state, maxX, maxY);
 #else
             UpdateScreen(current_state, maxX, maxY, old_state, false);
-#endif // OUTLINES
+#endif // !NOOUTLINES
 
             while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 100) {
 
 #if defined(PATIENT) || defined(TEXTPRINT)
                 Sleep(1500);
 #endif // defined(PATIENT) || defined(TEXTPRINT)
+#ifdef SCENIC
+                Sleep(250);
+#endif // SCENIC
+
 
                 gen++;
                 initial = false;
@@ -1187,11 +1207,11 @@ int main() {
                 old_state = CopyMatrix(current_state, maxX, maxY);
                 UpdateStateMatrix(old_state, current_state, maxX, maxY);
 
-#ifdef OUTLINES
+#ifndef NOOUTLINES
                 OutLineCaller(current_state, maxX, maxY);
 #else
                 UpdateScreen(current_state, maxX, maxY, old_state, false);
-#endif // OUTLINES
+#endif // !NOOUTLINES
             }
 
 #ifdef UNCERTAIN
