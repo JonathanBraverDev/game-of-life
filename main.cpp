@@ -30,7 +30,7 @@
 #define LOOPING
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
-#define NOOUTLINES
+#define SURVIVING
 // NOOUTLINES will not show outlines
 // SURVIVING will outline clusters who are expected to survive
 // NOTABLE will outline clusters with more likly activity
@@ -306,20 +306,23 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, ve
     point current_point = point{ cellX, cellY };
     current_cluster.push_back(current_point);
     state_copy[cellX][cellY] = DEAD; // marking saved cells as dead
-
-    point* neighbors = new point[8];
-    bool* filled = new bool[8];
-
-    FindAllNeighbors(state_copy, maxX, maxY, cellX, cellY, neighbors, filled, true);
-
-    for (int i = 0; i < 8; i++) {
-        if (filled[i] && state_copy[neighbors[i].cellX][neighbors[i].cellY] == ALIVE) { // avoid running on checked cells
-            FindCluster(state_copy, maxX, maxY, neighbors[i].cellX, neighbors[i].cellY, current_cluster);
+    
+    int diffX;
+    int diffY;
+    int currX;
+    int currY;
+    for (diffX = -1; diffX <= 1; diffX++) {
+        for (diffY = -1; diffY <= 1; diffY++) {
+            currX = cellX + diffX;
+            currY = cellY + diffY;
+            if (currX >= BORDER_SIZE && currY >= BORDER_SIZE
+                && currX < maxX - BORDER_SIZE - 1 && currY < maxY - BORDER_SIZE - 1) {
+                if (state_copy[currX][currY] == ALIVE) { // avoid running on checked cells
+                    FindCluster(state_copy, maxX, maxY, currX, currY, current_cluster);
+                }
+            }
         }
     }
-
-    delete[] neighbors;
-    delete[] filled;
 }
 
 // finds all clusters in the given state and saves them to the given vector
@@ -944,7 +947,7 @@ void OutLineCaller(bool** current_state, int maxX, int  maxY) {
     }
 
     bool** state_copy = CopyMatrix(current_state, maxX, maxY);
-    vector<point> cluster;
+    vector<point> cluster(OVERPOPULATION * 2); // reserving space for pretty big clusters
     sector outline;
 
     int pass_size = 0;
