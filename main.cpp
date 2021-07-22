@@ -127,6 +127,31 @@ struct sector
     int endY;
 };
 
+struct link
+{
+    point data;
+    link* next;
+};
+
+ //creates a link with the given data
+link* AddLink(point data, link* head = nullptr) {
+    link* link = (struct link*)malloc(sizeof(struct link));
+    link->data = data;
+    link->next = head;
+
+    return link;
+}
+
+// deletes the entire link chain
+void DeleteChain(link* head) {
+    link* tmp;
+    while (head != nullptr)
+    {
+        tmp = head->next;
+        delete head;
+        head = tmp;
+    }
+}
 
 // creates a secors with the given limits
 sector CreateSector(int startX, int endX, int startY, int endY) {
@@ -301,10 +326,11 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
     }
 }
 
-// finds a cluster of points connected to the given coordinates and saves them to the given vector
-void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, vector<point>& current_cluster) {
+// finds a cluster of points connected to the given coordinates and saves them to the given chain
+link* FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, link* head, int& cluster_size) {
     point current_point = point{ cellX, cellY };
-    current_cluster.push_back(current_point);
+    head = AddLink(current_point, head);
+    cluster_size++;
     state_copy[cellX][cellY] = DEAD; // marking saved cells as dead
     
     int diffX;
@@ -318,43 +344,46 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, ve
             if (currX >= BORDER_SIZE && currY >= BORDER_SIZE
                 && currX < maxX - BORDER_SIZE - 1 && currY < maxY - BORDER_SIZE - 1) {
                 if (state_copy[currX][currY] == ALIVE) { // avoid running on checked cells
-                    FindCluster(state_copy, maxX, maxY, currX, currY, current_cluster);
+                    head = FindCluster(state_copy, maxX, maxY, currX, currY, head, cluster_size);
                 }
             }
         }
     }
+
+    return head;
 }
 
 // finds all clusters in the given state and saves them to the given vector
-void FindClusters(bool** state, int maxX, int maxY, vector<vector<point>>& clusters) {
-    bool** state_copy = CopyMatrix(state, maxX, maxY);
-
-    for (int cellX = 0; cellX < maxX; cellX++) {
-        for (int cellY = 0; cellY < maxY; cellY++) {
-            if (state_copy[cellX][cellY] == ALIVE) {
-                clusters.push_back(vector<point>{});
-                FindCluster(state_copy, maxX, maxY, cellX, cellY, clusters.back());
-                if (clusters.back().size() <= MIN_SURVIVAL) { // clusters of less than the constant CANNOT survive, no matter the arrangment
-                    clusters.pop_back();
-                }
-            }
-        }
-    }
-
-    DeleteMatrix<bool>(state_copy);
-}
+//void FindClusters(bool** state, int maxX, int maxY, vector<vector<point>>& clusters) {
+//    bool** state_copy = CopyMatrix(state, maxX, maxY);
+//
+//    for (int cellX = 0; cellX < maxX; cellX++) {
+//        for (int cellY = 0; cellY < maxY; cellY++) {
+//            if (state_copy[cellX][cellY] == ALIVE) {
+//                clusters.push_back(vector<point>{});
+//                FindCluster(state_copy, maxX, maxY, cellX, cellY, clusters.back());
+//                if (clusters.back().size() <= MIN_SURVIVAL) { // clusters of less than the constant CANNOT survive, no matter the arrangment
+//                    clusters.pop_back();
+//                }
+//            }
+//        }
+//    }
+//
+//    DeleteMatrix<bool>(state_copy);
+//}
 
 // writes the min/max values of x and y of the given cluster to the given outline
-void FindClusterOutline(vector<point>& cluster, sector& outline) {
+void FindClusterOutline(link* head, sector& outline) {
     point current_point;
+    link* tmp = head;
 
     outline.startX = INT_MAX;
     outline.endX = INT_MIN;
     outline.startY = INT_MAX;
     outline.endY = INT_MIN;
 
-    while (!cluster.empty()) {
-        current_point = cluster.back();
+    while (tmp != nullptr) {
+        current_point = tmp->data;
 
         if (outline.startX > current_point.cellX) {
             outline.startX = current_point.cellX;
@@ -372,19 +401,19 @@ void FindClusterOutline(vector<point>& cluster, sector& outline) {
             outline.endY = current_point.cellY;
         }
 
-        cluster.pop_back();
+        tmp = tmp->next;
     }
 }
 
 // writes all outlines in the given vector to the given outline vector
-void FindClusterOutlines(vector<vector<point>>& clusters, vector<sector>& outlines) {
-    while (!clusters.empty()) {
-        outlines.push_back(sector{});
-        FindClusterOutline(clusters.back(), outlines.back());
-
-        clusters.pop_back();
-    }
-}
+//void FindClusterOutlines(vector<vector<point>>& clusters, vector<sector>& outlines) {
+//    while (!clusters.empty()) {
+//        outlines.push_back(sector{});
+//        FindClusterOutline(clusters.back(), outlines.back());
+//
+//        clusters.pop_back();
+//    }
+//}
 
 // Get the maxX and maxY screen sizes in pixel
 void GetDesktopResolution(int& maxX, int& maxY)
@@ -588,17 +617,17 @@ void DrawSectorOutline(sector sector, COLORREF* colors = nullptr, int maxX = 0, 
 }
 
 // adds all outlines to the display
-void DrawSectorOutlines(vector<sector> sectors) {
-    HWND myconsole = GetConsoleWindow();
-    HDC mydc = GetDC(myconsole);
-
-    while (!sectors.empty()) {
-        DrawSectorOutline(sectors.back());
-        sectors.pop_back();
-    }
-
-    ReleaseDC(myconsole, mydc);
-}
+//void DrawSectorOutlines(vector<sector> sectors) {
+//    HWND myconsole = GetConsoleWindow();
+//    HDC mydc = GetDC(myconsole);
+//
+//    while (!sectors.empty()) {
+//        DrawSectorOutline(sectors.back());
+//        sectors.pop_back();
+//    }
+//
+//    ReleaseDC(myconsole, mydc);
+//}
 
 // deletes the given outline from the display
 void ClearSectorOutline(sector& sector) {
@@ -932,7 +961,7 @@ bool HandleResponse(char response) {
 }
 
 // handles search and creation of outlines all the way ot the display
-void OutLineCaller(bool** current_state, int maxX, int  maxY) {
+void OutlineCaller(bool** current_state, int maxX, int  maxY) {
     // get sll the cells on screen
     COLORREF* colors = (COLORREF*)calloc(maxX * maxY, sizeof(COLORREF));
     for (int cellX = 0; cellX < maxX; cellX++) {
@@ -947,7 +976,8 @@ void OutLineCaller(bool** current_state, int maxX, int  maxY) {
     }
 
     bool** state_copy = CopyMatrix(current_state, maxX, maxY);
-    vector<point> cluster(OVERPOPULATION * 2); // reserving space for pretty big clusters
+    link*  head;
+    int    cluster_size;
     sector outline;
 
     int pass_size = 0;
@@ -968,12 +998,14 @@ void OutLineCaller(bool** current_state, int maxX, int  maxY) {
     for (int cellX = 0; cellX < maxX; cellX++) {
         for (int cellY = 0; cellY < maxY; cellY++) {
             if (state_copy[cellX][cellY] == ALIVE) {
-                FindCluster(state_copy, maxX, maxY, cellX, cellY, cluster);
-                if (cluster.size() > pass_size) { // clusters of less than the constant CANNOT survive, no matter the arrangment
-                    FindClusterOutline(cluster, outline);
+                head = nullptr;
+                cluster_size = 0;
+                head = FindCluster(state_copy, maxX, maxY, cellX, cellY, head, cluster_size);
+                if (cluster_size > pass_size) { // clusters of less than the constant CANNOT survive, no matter the arrangment
+                    FindClusterOutline(head, outline);
                     DrawSectorOutline(outline, colors, maxX, maxY);
                 }
-                cluster.clear();
+                DeleteChain(head);
             }
         }
     }
@@ -1051,7 +1083,7 @@ int main() {
 
             // initial render
 #ifndef NOOUTLINES
-            OutLineCaller(current_state, maxX, maxY);
+            OutlineCaller(current_state, maxX, maxY);
 #else
             UpdateScreen(current_state, maxX, maxY, old_state, false);
 #endif // !NOOUTLINES
@@ -1075,7 +1107,7 @@ int main() {
                 UpdateStateMatrix(old_state, current_state, maxX, maxY);
 
 #ifndef NOOUTLINES
-                OutLineCaller(current_state, maxX, maxY);
+                OutlineCaller(current_state, maxX, maxY);
 #else
                 UpdateScreen(current_state, maxX, maxY, old_state, false);
 #endif // !NOOUTLINES
