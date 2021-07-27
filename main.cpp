@@ -27,7 +27,7 @@
 // DOOMED will end the simulation after one iteration ends
 // UNCERTAIN will give the user a choise
 // RESURGENT will endlessly reset the simulation without confirmation
-#define LOOPING
+#define TRAPPED
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
 #define SURVIVING
@@ -48,12 +48,7 @@ constexpr auto INITIAL_LIFE_RATIO = 10; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
 const bool ALIVE = true;
 const bool DEAD = false;
-
-#ifdef LOOPING
 const int BORDER_SIZE = 1;
-#else
-const int BORDER_SIZE = 0;
-#endif // LOOPING
 
 
 #ifdef NORMAL
@@ -133,8 +128,8 @@ struct link
     link* next;
 };
 
- //creates a link with the given data
-link* AddLink(point data, link* head = nullptr) {
+//creates a link with the given data
+link* AddLink(point data, link* head) {
     link* link = (struct link*)malloc(sizeof(struct link));
     link->data = data;
     link->next = head;
@@ -142,14 +137,56 @@ link* AddLink(point data, link* head = nullptr) {
     return link;
 }
 
+// set the impossible values
+void DeleteLinkData(link* link) {
+    link->data.cellX = -1;
+    link->data.cellY = -1;
+}
+
+// check if the data was wiped
+bool Deleted(link* link) {
+    return link->data.cellX == -1
+        && link->data.cellY == -1;
+}
+
+// adding date to empty nodes, creating a new one if needed
+// !IMPORTAMT! the new node will REPLACE THE HEAD while data is ADDED TO THE LAST FREE SLOT
+link* AddData(point data, link* head) {
+    link* backup = head;
+    bool added = false;
+    while (!added && head != nullptr) {
+        if (Deleted(head)) {
+            head->data = data;
+            added = true;
+        }
+        head = head->next;
+    }
+
+    if (!added) { // if no free cells were found
+        head = AddLink(data, backup);
+    }
+    else {
+        head = backup;
+    }
+
+    return head;
+}
+
 // deletes the entire link chain
 void DeleteChain(link* head) {
     link* tmp;
-    while (head != nullptr)
-    {
+    while (head != nullptr) {
         tmp = head->next;
         delete head;
         head = tmp;
+    }
+}
+
+// overrites the data in the nodes with empty points
+void DeleteChainData(link* head) {
+    while (head != nullptr) {
+        DeleteLinkData(head);
+        head = head->next;
     }
 }
 
@@ -329,10 +366,10 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
 // finds a cluster of points connected to the given coordinates and saves them to the given chain
 link* FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, link* head, int& cluster_size) {
     point current_point = point{ cellX, cellY };
-    head = AddLink(current_point, head);
+    head = AddData(current_point, head);
     cluster_size++;
     state_copy[cellX][cellY] = DEAD; // marking saved cells as dead
-    
+
     int diffX;
     int diffY;
     int currX;
@@ -342,10 +379,9 @@ link* FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, l
             currX = cellX + diffX;
             currY = cellY + diffY;
             if (currX >= BORDER_SIZE && currY >= BORDER_SIZE
-                && currX < maxX - BORDER_SIZE - 1 && currY < maxY - BORDER_SIZE - 1) {
-                if (state_copy[currX][currY] == ALIVE) { // avoid running on checked cells
-                    head = FindCluster(state_copy, maxX, maxY, currX, currY, head, cluster_size);
-                }
+                && currX < maxX - BORDER_SIZE && currY < maxY - BORDER_SIZE
+                && state_copy[currX][currY] == ALIVE) {
+                head = FindCluster(state_copy, maxX, maxY, currX, currY, head, cluster_size); // !IMPORTANT! dosent incluse all the found cells
             }
         }
     }
@@ -382,7 +418,7 @@ void FindClusterOutline(link* head, sector& outline) {
     outline.startY = INT_MAX;
     outline.endY = INT_MIN;
 
-    while (tmp != nullptr) {
+    while (tmp != nullptr && !Deleted(tmp)) {
         current_point = tmp->data;
 
         if (outline.startX > current_point.cellX) {
@@ -592,7 +628,7 @@ void DrawSectorOutline(sector sector, COLORREF* colors = nullptr, int maxX = 0, 
         }
     }
 
-    cellY = min(sector.endY + 1, maxY - 2 * BORDER_SIZE);
+    cellY = min(sector.endY + 1, maxY - BORDER_SIZE - 1);
     for (cellX = sector.startX - 1; cellX <= sector.endX + 1; cellX++) { // bottom line
         if (cellX >= 0 && cellX < maxX) {
             colors[cellY * maxX + cellX] = COLOR_BORDER;
@@ -606,7 +642,7 @@ void DrawSectorOutline(sector sector, COLORREF* colors = nullptr, int maxX = 0, 
         }
     }
 
-    cellX = min(sector.endX + 1, maxX - 2 * BORDER_SIZE);
+    cellX = min(sector.endX + 1, maxX - BORDER_SIZE - 1);
     for (cellY = sector.startY - 1; cellY <= sector.endY + 1; cellY++) { // right line
         if (cellY >= 0 && cellY < maxY) {
             colors[cellY * maxX + cellX] = COLOR_BORDER;
@@ -729,6 +765,53 @@ void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, in
     }
 }
 
+// hardcoded border manager
+void BorderSetter(bool** current_state, int maxX, int maxY) {
+#ifdef LOOPING
+    // handling special cases
+    // bottom right to top left
+    current_state[BORDER_SIZE - 1][BORDER_SIZE - 1] = current_state[maxX - BORDER_SIZE - 1][maxY - BORDER_SIZE - 1];
+    // top left to bottm right
+    current_state[maxX - BORDER_SIZE][maxY - BORDER_SIZE] = current_state[BORDER_SIZE][BORDER_SIZE];
+    // bottom left to top right
+    current_state[maxX - BORDER_SIZE][BORDER_SIZE - 1] = current_state[BORDER_SIZE][maxY - BORDER_SIZE - 1];
+    // top right to bottom left 
+    current_state[BORDER_SIZE - 1][maxY - BORDER_SIZE] = current_state[maxX - BORDER_SIZE - 1][BORDER_SIZE];
+
+    // copy top and bottom edges to the border
+    for (int cellX = BORDER_SIZE; cellX < maxX; cellX++) {
+        current_state[cellX][BORDER_SIZE - 1] = current_state[cellX][maxY - BORDER_SIZE - 1];
+        current_state[cellX][maxY - BORDER_SIZE] = current_state[cellX][BORDER_SIZE];
+    }
+    // copy left and right edges to the border
+    for (int cellY = BORDER_SIZE - 1; cellY < maxY; cellY++) {
+        current_state[BORDER_SIZE - 1][cellY] = current_state[maxX - BORDER_SIZE - 1][cellY];
+        current_state[maxX - BORDER_SIZE][cellY] = current_state[BORDER_SIZE][cellY];
+    }
+#else
+    // handling special cases
+    // bottom right to top left
+    current_state[BORDER_SIZE - 1][BORDER_SIZE - 1] = false;
+    // top left to bottm right
+    current_state[maxX - BORDER_SIZE][maxY - BORDER_SIZE] = false;
+    // bottom left to top right
+    current_state[maxX - BORDER_SIZE][BORDER_SIZE - 1] = false;
+    // top right to bottom left 
+    current_state[BORDER_SIZE - 1][maxY - BORDER_SIZE] = false;
+
+    // false fill top and bottom borders
+    for (int cellX = BORDER_SIZE; cellX < maxX; cellX++) {
+        current_state[cellX][BORDER_SIZE - 1] = false;
+        current_state[cellX][maxY - BORDER_SIZE] = false;
+    }
+    // false fill left and right borders
+    for (int cellY = BORDER_SIZE - 1; cellY < maxY; cellY++) {
+        current_state[BORDER_SIZE - 1][cellY] = false;
+        current_state[maxX - BORDER_SIZE][cellY] = false;
+    }
+#endif // LOOPING
+}
+
 // updates the world to the next iteration
 void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY) {
     bool** old_copy = CopyMatrix(old_state, maxX, maxY);
@@ -756,16 +839,7 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
         }
     }
 
-    // copy top and bottom edh=ges to the border
-    for (int cellX = BORDER_SIZE; cellX < maxX; cellX++) {
-        current_state[cellX][BORDER_SIZE - 1] = current_state[cellX][maxY - BORDER_SIZE - 1];
-        current_state[cellX][maxY - BORDER_SIZE] = current_state[cellX][BORDER_SIZE];
-    }
-    // copy left and right edges to the border
-    for (int cellY = BORDER_SIZE - 1; cellY < maxY; cellY++) {
-        current_state[BORDER_SIZE - 1][cellY] = current_state[maxX - BORDER_SIZE - 1][cellY];
-        current_state[maxX - BORDER_SIZE][cellY] = current_state[BORDER_SIZE][cellY];
-    }
+    BorderSetter(current_state, maxX, maxY);
 
     DeleteMatrix<bool>(old_copy);
     delete[] neighbors;
@@ -925,29 +999,7 @@ void Initialize(bool** current_state, int maxX, int maxY) {
     }
 #endif // GLIDER
 
-#ifdef LOOPING
-    // handling special cases
-    // bottom right to top left
-    current_state[BORDER_SIZE - 1][BORDER_SIZE - 1] = current_state[maxX - BORDER_SIZE - 1][maxY - BORDER_SIZE - 1];
-    // top left to bottm right
-    current_state[maxX - BORDER_SIZE][maxY - BORDER_SIZE] = current_state[BORDER_SIZE][BORDER_SIZE];
-    // bottom left to top right
-    current_state[maxX - BORDER_SIZE][BORDER_SIZE - 1] = current_state[BORDER_SIZE][maxY - BORDER_SIZE - 1];
-    // top right to bottom left 
-    current_state[BORDER_SIZE - 1][maxY - BORDER_SIZE] = current_state[maxX - BORDER_SIZE - 1][BORDER_SIZE];
-
-    // copy top and bottom edh=ges to the border
-    for (int cellX = BORDER_SIZE; cellX < maxX; cellX++) {
-        current_state[cellX][BORDER_SIZE - 1] = current_state[cellX][maxY - BORDER_SIZE - 1];
-        current_state[cellX][maxY - BORDER_SIZE] = current_state[cellX][BORDER_SIZE];
-    }
-    // copy left and right edges to the border
-    for (int cellY = BORDER_SIZE - 1; cellY < maxY; cellY++) {
-        current_state[BORDER_SIZE - 1][cellY] = current_state[maxX - BORDER_SIZE - 1][cellY];
-        current_state[maxX - BORDER_SIZE][cellY] = current_state[BORDER_SIZE][cellY];
-    }
-#endif // LOOPING
-
+    BorderSetter(current_state, maxX, maxY);
 }
 
 // handle responce options
@@ -961,9 +1013,8 @@ bool HandleResponse(char response) {
 }
 
 // handles search and creation of outlines all the way ot the display
-void OutlineCaller(bool** current_state, int maxX, int  maxY) {
+link* OutlineCaller(bool** current_state, int maxX, int  maxY, COLORREF* colors, link* head) {
     // get sll the cells on screen
-    COLORREF* colors = (COLORREF*)calloc(maxX * maxY, sizeof(COLORREF));
     for (int cellX = 0; cellX < maxX; cellX++) {
         for (int cellY = 0; cellY < maxY; cellY++) {
             if (current_state[cellX][cellY] == ALIVE) {
@@ -976,7 +1027,6 @@ void OutlineCaller(bool** current_state, int maxX, int  maxY) {
     }
 
     bool** state_copy = CopyMatrix(current_state, maxX, maxY);
-    link*  head;
     int    cluster_size;
     sector outline;
 
@@ -998,14 +1048,13 @@ void OutlineCaller(bool** current_state, int maxX, int  maxY) {
     for (int cellX = 0; cellX < maxX; cellX++) {
         for (int cellY = 0; cellY < maxY; cellY++) {
             if (state_copy[cellX][cellY] == ALIVE) {
-                head = nullptr;
                 cluster_size = 0;
                 head = FindCluster(state_copy, maxX, maxY, cellX, cellY, head, cluster_size);
                 if (cluster_size > pass_size) { // clusters of less than the constant CANNOT survive, no matter the arrangment
                     FindClusterOutline(head, outline);
                     DrawSectorOutline(outline, colors, maxX, maxY);
                 }
-                DeleteChain(head);
+                DeleteChainData(head);
             }
         }
     }
@@ -1020,8 +1069,9 @@ void OutlineCaller(bool** current_state, int maxX, int  maxY) {
 
     DeleteObject(bitmap);
     DeleteObject(scr);
-    free(colors);
     DeleteMatrix<bool>(state_copy);
+
+    return head;
 }
 
 int main() {
@@ -1059,6 +1109,15 @@ int main() {
     bool initial;
     int gen = 0;
 
+#ifdef BITMAP
+    COLORREF* colors = (COLORREF*)calloc(maxX * maxY, sizeof(COLORREF));
+#endif // BITMAP
+
+#ifndef NOOUTLINES
+    link* head = nullptr;
+#endif // !NOOUTLINES
+
+
 #ifdef UNCERTAIN
     char response = 'y';
 #endif // UNCERTAIN
@@ -1083,7 +1142,7 @@ int main() {
 
             // initial render
 #ifndef NOOUTLINES
-            OutlineCaller(current_state, maxX, maxY);
+            head = OutlineCaller(current_state, maxX, maxY, colors, head);
 #else
             UpdateScreen(current_state, maxX, maxY, old_state, false);
 #endif // !NOOUTLINES
@@ -1107,7 +1166,7 @@ int main() {
                 UpdateStateMatrix(old_state, current_state, maxX, maxY);
 
 #ifndef NOOUTLINES
-                OutlineCaller(current_state, maxX, maxY);
+                head = OutlineCaller(current_state, maxX, maxY, colors, head);
 #else
                 UpdateScreen(current_state, maxX, maxY, old_state, false);
 #endif // !NOOUTLINES
@@ -1124,10 +1183,21 @@ int main() {
 
     //DeleteMatrix<bool>(old_state);
     DeleteMatrix<bool>(current_state);
+
+#ifdef BITMAP
+    free(colors);
+#endif // BITMAP
+
+
+#ifndef NOOUTLINES
+    DeleteChain(head);
+#endif // !NOOUTLINES
+
     return 0;
 }
 
 // refactoring help:
 // lover camel case [a-z]+[A-Z0-9][a-z0-9]+[A-Za-z0-9]*
 // upper camel case [A-Z][a-z0-9]*[A-Z0-9][a-z0-9]+[A-Za-z0-9]*
+// pointer parameters [a-zA-Z>]& 
 // pointer parameters [a-zA-Z>]& 
