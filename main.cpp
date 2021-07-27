@@ -27,10 +27,10 @@
 // DOOMED will end the simulation after one iteration ends
 // UNCERTAIN will give the user a choise
 // RESURGENT will endlessly reset the simulation without confirmation
-#define TRAPPED
+#define LOOPING
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
-#define SURVIVING
+#define NOOUTLINES
 // NOOUTLINES will not show outlines
 // SURVIVING will outline clusters who are expected to survive
 // NOTABLE will outline clusters with more likly activity
@@ -44,7 +44,7 @@
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 10; // this is an INVERSE (1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
 const bool ALIVE = true;
 const bool DEAD = false;
@@ -64,7 +64,7 @@ const int OVERPOPULATION = 4;
 const int LONELINESS = 1;
 const int MIN_SURVIVAL = 2;
 const int MAX_SURVIVAL = 4;
-const int MIN_MULTIPLY = 2;
+const int MIN_MULTIPLY = 3;
 const int MAX_MULTIPLY = 3;
 const int OVERPOPULATION = 5;
 #endif // LUSH
@@ -155,7 +155,8 @@ link* AddData(point data, link* head) {
     link* backup = head;
     bool added = false;
     while (!added && head != nullptr) {
-        if (Deleted(head)) {
+        if (head->data.cellX == -1
+            && head->data.cellY == -1) {
             head->data = data;
             added = true;
         }
@@ -185,7 +186,8 @@ void DeleteChain(link* head) {
 // overrites the data in the nodes with empty points
 void DeleteChainData(link* head) {
     while (head != nullptr) {
-        DeleteLinkData(head);
+        head->data.cellX = -1;
+        head->data.cellY = -1;
         head = head->next;
     }
 }
@@ -418,7 +420,8 @@ void FindClusterOutline(link* head, sector& outline) {
     outline.startY = INT_MAX;
     outline.endY = INT_MIN;
 
-    while (tmp != nullptr && !Deleted(tmp)) {
+    while (tmp != nullptr && !(tmp->data.cellX == -1
+                               && tmp->data.cellY == -1)) {
         current_point = tmp->data;
 
         if (outline.startX > current_point.cellX) {
@@ -1155,7 +1158,6 @@ int main() {
 #ifdef SCENIC
                 Sleep(250);
 #endif // SCENIC
-
 
                 gen++;
                 initial = false;
