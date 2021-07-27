@@ -30,13 +30,13 @@
 #define LOOPING
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
-#define NOOUTLINES
+#define LARGE
 // NOOUTLINES will not show outlines
 // SURVIVING will outline clusters who are expected to survive
 // NOTABLE will outline clusters with more likly activity
 // LARGE will outline clusters of significant size
 
-#define NORMAL
+#define LUSH
 // NORMAL will set the survival parameters to their respective defaults
 // LUSH will increase max population, multiplication and survival rates
 // PARADISE will unlock the secrets to ethernal life
@@ -126,6 +126,7 @@ struct link
 {
     point data;
     link* next;
+    bool  free;
 };
 
 //creates a link with the given data
@@ -133,20 +134,9 @@ link* AddLink(point data, link* head) {
     link* link = (struct link*)malloc(sizeof(struct link));
     link->data = data;
     link->next = head;
+    link->free = false;
 
     return link;
-}
-
-// set the impossible values
-void DeleteLinkData(link* link) {
-    link->data.cellX = -1;
-    link->data.cellY = -1;
-}
-
-// check if the data was wiped
-bool Deleted(link* link) {
-    return link->data.cellX == -1
-        && link->data.cellY == -1;
 }
 
 // adding date to empty nodes, creating a new one if needed
@@ -155,9 +145,9 @@ link* AddData(point data, link* head) {
     link* backup = head;
     bool added = false;
     while (!added && head != nullptr) {
-        if (head->data.cellX == -1
-            && head->data.cellY == -1) {
+        if (head->free) {
             head->data = data;
+            head->free = false;
             added = true;
         }
         head = head->next;
@@ -186,8 +176,7 @@ void DeleteChain(link* head) {
 // overrites the data in the nodes with empty points
 void DeleteChainData(link* head) {
     while (head != nullptr) {
-        head->data.cellX = -1;
-        head->data.cellY = -1;
+        head->free = true;
         head = head->next;
     }
 }
@@ -420,8 +409,7 @@ void FindClusterOutline(link* head, sector& outline) {
     outline.startY = INT_MAX;
     outline.endY = INT_MIN;
 
-    while (tmp != nullptr && !(tmp->data.cellX == -1
-                               && tmp->data.cellY == -1)) {
+    while (tmp != nullptr && !tmp->free) {
         current_point = tmp->data;
 
         if (outline.startX > current_point.cellX) {
@@ -1150,7 +1138,7 @@ int main() {
             UpdateScreen(current_state, maxX, maxY, old_state, false);
 #endif // !NOOUTLINES
 
-            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 100) {
+            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 55) {
 
 #if defined(PATIENT) || defined(TEXTPRINT)
                 Sleep(1500);
@@ -1201,5 +1189,4 @@ int main() {
 // refactoring help:
 // lover camel case [a-z]+[A-Z0-9][a-z0-9]+[A-Za-z0-9]*
 // upper camel case [A-Z][a-z0-9]*[A-Z0-9][a-z0-9]+[A-Za-z0-9]*
-// pointer parameters [a-zA-Z>]& 
-// pointer parameters [a-zA-Z>]& 
+// pointer parameters [a-zA-Z>]&
