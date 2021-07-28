@@ -27,16 +27,16 @@
 // DOOMED will end the simulation after one iteration ends
 // UNCERTAIN will give the user a choise
 // RESURGENT will endlessly reset the simulation without confirmation
-#define LOOPING
+#define TRAPPED
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
-#define LARGE
-// NOOUTLINES will not show outlines
+#define NOOUTLINES
+// NOOUTLINES will not show outlines // !IMPORTANT! uses more memory that outlines, 23 vs 16
 // SURVIVING will outline clusters who are expected to survive
 // NOTABLE will outline clusters with more likly activity
 // LARGE will outline clusters of significant size
 
-#define LUSH
+#define NORMAL
 // NORMAL will set the survival parameters to their respective defaults
 // LUSH will increase max population, multiplication and survival rates
 // PARADISE will unlock the secrets to ethernal life
@@ -44,7 +44,7 @@
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 10; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
 const bool ALIVE = true;
 const bool DEAD = false;
@@ -493,7 +493,7 @@ void RenderThread(bool** current_state, int maxY, int begin, int end, bool** old
 #endif // MULTIRENDER
 
 // updates the display to the currest state of the world using the chosen method
-void UpdateScreen(bool** current_state, int maxX, int maxY, bool** old_state = NULL, bool initial = true) {
+void UpdateScreen(bool** current_state, int maxX, int maxY, bool** old_state = NULL, bool initial = true, COLORREF* colors = nullptr) {
 #ifdef MULTIRENDER
     unsigned int num_of_threads = thread::hardware_concurrency();
     thread* threads = new thread[num_of_threads];
@@ -551,9 +551,14 @@ void UpdateScreen(bool** current_state, int maxX, int maxY, bool** old_state = N
 #endif // TEXTPRINT
 
 #ifdef BITMAP
+    bool del = false;
     int real_maxX = maxX - BORDER_SIZE;
     int real_maxY = maxY - BORDER_SIZE;
-    COLORREF* colors = (COLORREF*)calloc(real_maxX * real_maxY, sizeof(COLORREF));
+    if (colors == nullptr)
+    {
+        colors = (COLORREF*)calloc(maxX * maxY, sizeof(COLORREF));
+        del = true;
+    }
     for (int cellX = BORDER_SIZE; cellX < real_maxX; cellX++) {
         for (int cellY = BORDER_SIZE; cellY < real_maxY; cellY++) {
             if (current_state[cellX][cellY] == ALIVE) {
@@ -564,7 +569,7 @@ void UpdateScreen(bool** current_state, int maxX, int maxY, bool** old_state = N
             }
         }
     }
-
+    
     HWND myconsole = GetConsoleWindow();
     HDC mydc = GetDC(myconsole);
     HBITMAP bitmap = CreateBitmap(real_maxX, real_maxY, 1, 8 * 4, (void*)colors);
@@ -574,7 +579,9 @@ void UpdateScreen(bool** current_state, int maxX, int maxY, bool** old_state = N
 
     //DeleteObject(bitmap); // destroyed when function ends
     //DeleteObject(scr);
-    free(colors);
+    if (del) {
+        free(colors);
+    }
 #endif // BITMAP
 }
 
@@ -1102,6 +1109,8 @@ int main() {
 
 #ifdef BITMAP
     COLORREF* colors = (COLORREF*)calloc(maxX * maxY, sizeof(COLORREF));
+#else
+    COLORREF* colors = nullptr;
 #endif // BITMAP
 
 #ifndef NOOUTLINES
@@ -1135,10 +1144,10 @@ int main() {
 #ifndef NOOUTLINES
             head = OutlineCaller(current_state, maxX, maxY, colors, head);
 #else
-            UpdateScreen(current_state, maxX, maxY, old_state, false);
+            UpdateScreen(current_state, maxX, maxY, old_state, true, colors);
 #endif // !NOOUTLINES
 
-            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 55) {
+            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 100) {
 
 #if defined(PATIENT) || defined(TEXTPRINT)
                 Sleep(1500);
@@ -1158,7 +1167,7 @@ int main() {
 #ifndef NOOUTLINES
                 head = OutlineCaller(current_state, maxX, maxY, colors, head);
 #else
-                UpdateScreen(current_state, maxX, maxY, old_state, false);
+                UpdateScreen(current_state, maxX, maxY, old_state, false, colors);
 #endif // !NOOUTLINES
             }
 
@@ -1189,4 +1198,5 @@ int main() {
 // refactoring help:
 // lover camel case [a-z]+[A-Z0-9][a-z0-9]+[A-Za-z0-9]*
 // upper camel case [A-Z][a-z0-9]*[A-Z0-9][a-z0-9]+[A-Za-z0-9]*
-// pointer parameters [a-zA-Z>]&
+// pointer parameters [a-zA-Z>]& 
+// pointer parameters [a-zA-Z>]& 
