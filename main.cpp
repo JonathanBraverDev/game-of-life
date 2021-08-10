@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <thread>
 #include <vector>
+#include <queue>
 
 #define RANDOM
 // RANDOM will start with a randomly genereted first generation
@@ -30,13 +31,13 @@
 #define TRAPPED
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
-#define NOOUTLINES
+#define LARGE
 // NOOUTLINES will not show outlines // !IMPORTANT! uses more memory that outlines, 23 vs 16
 // SURVIVING will outline clusters who are expected to survive
 // NOTABLE will outline clusters with more likly activity
 // LARGE will outline clusters of significant size
 
-#define NORMAL
+#define LUSH
 // NORMAL will set the survival parameters to their respective defaults
 // LUSH will increase max population, multiplication and survival rates
 // PARADISE will unlock the secrets to ethernal life
@@ -354,30 +355,66 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
     }
 }
 
-// finds a cluster of points connected to the given coordinates and saves them to the given chain
-link* FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, link* head, int& cluster_size) {
-    point current_point = point{ cellX, cellY };
-    head = AddData(current_point, head);
-    cluster_size++;
-    state_copy[cellX][cellY] = DEAD; // marking saved cells as dead
+// updates the min/max values of x and y of the outline considering the new point as a part of the same cluster
+void UpdateClusterOutline(point& point, sector& outline) {
+    if (outline.startX > point.cellX) {
+        outline.startX = point.cellX;
+    }
 
-    int diffX;
-    int diffY;
-    int currX;
-    int currY;
-    for (diffX = -1; diffX <= 1; diffX++) {
-        for (diffY = -1; diffY <= 1; diffY++) {
-            currX = cellX + diffX;
-            currY = cellY + diffY;
-            if (currX >= BORDER_SIZE && currY >= BORDER_SIZE
-                && currX < maxX - BORDER_SIZE && currY < maxY - BORDER_SIZE
-                && state_copy[currX][currY] == ALIVE) {
-                head = FindCluster(state_copy, maxX, maxY, currX, currY, head, cluster_size); // !IMPORTANT! dosent incluse all the found cells
-            }
+    if (outline.endX < point.cellX) {
+        outline.endX = point.cellX;
+    }
+
+    if (outline.startY > point.cellY) {
+        outline.startY = point.cellY;
+    }
+
+    if (outline.endY < point.cellY) {
+        outline.endY = point.cellY;
+    }
+}
+
+// finds a cluster of points connected to the given coordinates and saves them to the given chain
+void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, link* head, int& cluster_size, sector& outline, point* neighbors, bool* filled) {
+    
+    outline.startX = INT_MAX;
+    outline.endX = INT_MIN;
+    outline.startY = INT_MAX;
+    outline.endY = INT_MIN;
+    queue<point> check_list;
+    cluster_size = 0;
+
+    point current_point = point{ cellX, cellY };
+    UpdateClusterOutline(current_point, outline);
+    state_copy[cellX][cellY] = DEAD; // marking saved cells as dead
+    cluster_size++;
+
+    FindAllNeighbors(state_copy, maxX, maxY, cellX, cellY, neighbors, filled, true);
+    for (int i = 0; i < 8; i++) {
+        if (filled[i]) {
+            check_list.push(point{ neighbors[i].cellX, neighbors[i].cellY });
         }
     }
 
-    return head;
+    while (!check_list.empty())
+    {
+        current_point = check_list.front();
+        if (state_copy[current_point.cellX][current_point.cellY] = ALIVE) // check if the cell was procces by another neighbor
+        {
+            UpdateClusterOutline(current_point, outline);
+            state_copy[current_point.cellX][current_point.cellY] = DEAD;
+            cluster_size++;
+
+            FindAllNeighbors(state_copy, maxX, maxY, cellX, cellY, neighbors, filled, true);
+            for (int i = 0; i < 8; i++) {
+                if (filled[i]) {
+                    check_list.push(point{ neighbors[i].cellX, neighbors[i].cellY });
+                }
+            }
+        }
+
+        check_list.pop();
+    }
 }
 
 // finds all clusters in the given state and saves them to the given vector
@@ -399,44 +436,11 @@ link* FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, l
 //    DeleteMatrix<bool>(state_copy);
 //}
 
-// writes the min/max values of x and y of the given cluster to the given outline
-void FindClusterOutline(link* head, sector& outline) {
-    point current_point;
-    link* tmp = head;
-
-    outline.startX = INT_MAX;
-    outline.endX = INT_MIN;
-    outline.startY = INT_MAX;
-    outline.endY = INT_MIN;
-
-    while (tmp != nullptr && !tmp->free) {
-        current_point = tmp->data;
-
-        if (outline.startX > current_point.cellX) {
-            outline.startX = current_point.cellX;
-        }
-
-        if (outline.endX < current_point.cellX) {
-            outline.endX = current_point.cellX;
-        }
-
-        if (outline.startY > current_point.cellY) {
-            outline.startY = current_point.cellY;
-        }
-
-        if (outline.endY < current_point.cellY) {
-            outline.endY = current_point.cellY;
-        }
-
-        tmp = tmp->next;
-    }
-}
-
 // writes all outlines in the given vector to the given outline vector
-//void FindClusterOutlines(vector<vector<point>>& clusters, vector<sector>& outlines) {
+//void UpdateClusterOutlines(vector<vector<point>>& clusters, vector<sector>& outlines) {
 //    while (!clusters.empty()) {
 //        outlines.push_back(sector{});
-//        FindClusterOutline(clusters.back(), outlines.back());
+//        UpdateClusterOutline(clusters.back(), outlines.back());
 //
 //        clusters.pop_back();
 //    }
@@ -811,10 +815,8 @@ void BorderSetter(bool** current_state, int maxX, int maxY) {
 }
 
 // updates the world to the next iteration
-void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY) {
+void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY, point* neighbors, bool* filled) {
     bool** old_copy = CopyMatrix(old_state, maxX, maxY);
-    point* neighbors = new point[8]; // move to parent
-    bool* filled = new bool[8];
 
     // force update left and right edges
     for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
@@ -1011,7 +1013,7 @@ bool HandleResponse(char response) {
 }
 
 // handles search and creation of outlines all the way ot the display
-link* OutlineCaller(bool** current_state, int maxX, int  maxY, COLORREF* colors, link* head) {
+void OutlineCaller(bool** current_state, int maxX, int maxY, link* head, COLORREF* colors, point* neighbors, bool* filled) {
     // get sll the cells on screen
     for (int cellX = 0; cellX < maxX; cellX++) {
         for (int cellY = 0; cellY < maxY; cellY++) {
@@ -1046,13 +1048,10 @@ link* OutlineCaller(bool** current_state, int maxX, int  maxY, COLORREF* colors,
     for (int cellX = 0; cellX < maxX; cellX++) {
         for (int cellY = 0; cellY < maxY; cellY++) {
             if (state_copy[cellX][cellY] == ALIVE) {
-                cluster_size = 0;
-                head = FindCluster(state_copy, maxX, maxY, cellX, cellY, head, cluster_size);
+                FindCluster(state_copy, maxX, maxY, cellX, cellY, head, cluster_size, outline, neighbors, filled);
                 if (cluster_size > pass_size) { // clusters of less than the constant CANNOT survive, no matter the arrangment
-                    FindClusterOutline(head, outline);
                     DrawSectorOutline(outline, colors, maxX, maxY);
                 }
-                DeleteChainData(head);
             }
         }
     }
@@ -1068,8 +1067,6 @@ link* OutlineCaller(bool** current_state, int maxX, int  maxY, COLORREF* colors,
     DeleteObject(bitmap);
     DeleteObject(scr);
     DeleteMatrix<bool>(state_copy);
-
-    return head;
 }
 
 int main() {
@@ -1106,6 +1103,8 @@ int main() {
     bool** old_state = CreateMatrix<bool>(maxX, maxY); // purly to stop the 'uninitialised used'
     bool initial;
     int gen = 0;
+    point* neighbors = new point[8];
+    bool* filled = new bool[8];
 
 #ifdef BITMAP
     COLORREF* colors = (COLORREF*)calloc(maxX * maxY, sizeof(COLORREF));
@@ -1142,12 +1141,12 @@ int main() {
 
             // initial render
 #ifndef NOOUTLINES
-            head = OutlineCaller(current_state, maxX, maxY, colors, head);
+            OutlineCaller(current_state, maxX, maxY, head, colors, neighbors, filled);
 #else
             UpdateScreen(current_state, maxX, maxY, old_state, true, colors);
 #endif // !NOOUTLINES
 
-            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 100) {
+            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 55) {
 
 #if defined(PATIENT) || defined(TEXTPRINT)
                 Sleep(1500);
@@ -1162,10 +1161,10 @@ int main() {
 
                 DeleteMatrix<bool>(old_state); // idea: overwrite instead of deleting
                 old_state = CopyMatrix(current_state, maxX, maxY);
-                UpdateStateMatrix(old_state, current_state, maxX, maxY);
+                UpdateStateMatrix(old_state, current_state, maxX, maxY, neighbors, filled);
 
 #ifndef NOOUTLINES
-                head = OutlineCaller(current_state, maxX, maxY, colors, head);
+                OutlineCaller(current_state, maxX, maxY, head, colors, neighbors, filled); // crash here, queue add, not first outline call
 #else
                 UpdateScreen(current_state, maxX, maxY, old_state, false, colors);
 #endif // !NOOUTLINES
@@ -1198,5 +1197,4 @@ int main() {
 // refactoring help:
 // lover camel case [a-z]+[A-Z0-9][a-z0-9]+[A-Za-z0-9]*
 // upper camel case [A-Z][a-z0-9]*[A-Z0-9][a-z0-9]+[A-Za-z0-9]*
-// pointer parameters [a-zA-Z>]& 
-// pointer parameters [a-zA-Z>]& 
+// pointer parameters [a-zA-Z>]&
