@@ -31,8 +31,9 @@
 #define TRAPPED
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
-#define LARGE
+#define SURVIVING
 // NOOUTLINES will not show outlines // !IMPORTANT! uses more memory that outlines, 23 vs 16
+// ALL will outline any cluster lasrger than a single cell
 // SURVIVING will outline clusters who are expected to survive
 // NOTABLE will outline clusters with more likly activity
 // LARGE will outline clusters of significant size
@@ -45,7 +46,7 @@
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 10; // this is an INVERSE (1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
 const bool ALIVE = true;
 const bool DEAD = false;
@@ -394,6 +395,10 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, li
         if (filled[i]) {
             check_list.push(point{ neighbors[i].cellX, neighbors[i].cellY });
         }
+    }
+    if (true == filled[0]) // for debug only, something that dosent run EVERY SINGLE while check
+    {
+        char ok = 'l';
     }
 
     while (!check_list.empty())
@@ -1031,6 +1036,10 @@ void OutlineCaller(bool** current_state, int maxX, int maxY, link* head, COLORRE
     sector outline;
 
     int pass_size = 0;
+
+#ifdef ALL
+    pass_size = 1;
+#endif // SURVIVING
 
 #ifdef SURVIVING
     pass_size = MIN_SURVIVAL;
