@@ -4,7 +4,6 @@
 #include <cstdlib>
 #include <thread>
 #include <vector>
-#include <queue>
 
 #define RANDOM
 // RANDOM will start with a randomly genereted first generation
@@ -38,7 +37,7 @@
 // NOTABLE will outline clusters with more likly activity
 // LARGE will outline clusters of significant size
 
-#define LUSH
+#define NORMAL
 // NORMAL will set the survival parameters to their respective defaults
 // LUSH will increase max population, multiplication and survival rates
 // PARADISE will unlock the secrets to ethernal life
@@ -46,7 +45,7 @@
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 10; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
 const bool ALIVE = true;
 const bool DEAD = false;
@@ -131,55 +130,108 @@ struct link
     bool  free;
 };
 
-//creates a link with the given data
-link* AddLink(point data, link* head) {
-    link* link = (struct link*)malloc(sizeof(struct link));
-    link->data = data;
-    link->next = head;
-    link->free = false;
+// global non constants
+link* HEAD = nullptr;
+point* NEIGHBORS = new point[8];
+bool* FILLED = new bool[8];
 
-    return link;
+//creates a link with the given data
+void AddLink(point data) {
+    link* new_head = (struct link*)malloc(sizeof(struct link));
+    new_head->data = data;
+    new_head->next = HEAD;
+    new_head->free = false;
+
+    HEAD = new_head;
 }
 
 // adding date to empty nodes, creating a new one if needed
-// !IMPORTAMT! the new node will REPLACE THE HEAD while data is ADDED TO THE LAST FREE SLOT
-link* AddData(point data, link* head) {
-    link* backup = head;
+// !IMPORTAMT! the new node will BECOME THE NEW HEAD while data is ADDED TO THE FIRST FREE SLOT
+void AddData(point data) {
+    link* backup = HEAD;
     bool added = false;
-    while (!added && head != nullptr) {
-        if (head->free) {
-            head->data = data;
-            head->free = false;
+    while (!added && HEAD != nullptr) {
+        if (HEAD->free) {
+            HEAD->data = data;
+            HEAD->free = false;
             added = true;
         }
-        head = head->next;
+        HEAD = HEAD->next;
     }
 
     if (!added) { // if no free cells were found
-        head = AddLink(data, backup);
+        AddLink(data);
     }
     else {
-        head = backup;
+        HEAD = backup;
     }
+}
 
-    return head;
+// returns the first filled link in the chain
+link* GetFirstLink() {
+    link* backup = HEAD;
+    link* first = nullptr; // !!! null pointer !!!
+    bool found = false;
+    while (!found && HEAD != nullptr) {
+        if (!HEAD->free) {
+            first = HEAD;
+            found = true;
+        }
+        HEAD = HEAD->next;
+    }
+    HEAD = backup;
+
+    return first;
+}
+
+void FreeLink(link* link) {
+    link->free = true;
+}
+
+// returns true if the chain has no current data, false otherwise
+bool IsEmpty() {
+    link* backup = HEAD;
+    bool empty = true;
+    while (empty && HEAD != nullptr) {
+        if (!HEAD->free) {
+            empty = false;
+        }
+        HEAD = HEAD->next;
+    }
+    HEAD = backup;
+
+    return empty;
+}
+
+
+// marks the first filled link as free effectivly deleting it (oh im so funny)
+void Guillotine() {
+    link* backup = HEAD;
+    bool behaded = false;
+    while (!behaded && HEAD != nullptr) {
+        if (HEAD->free) {
+            HEAD->free = true;
+            behaded = true;
+        }
+        HEAD = HEAD->next;
+    }
 }
 
 // deletes the entire link chain
-void DeleteChain(link* head) {
+void DeleteChain() {
     link* tmp;
-    while (head != nullptr) {
-        tmp = head->next;
-        delete head;
-        head = tmp;
+    while (HEAD != nullptr) {
+        tmp = HEAD->next;
+        delete HEAD;
+        HEAD = tmp;
     }
 }
 
-// overrites the data in the nodes with empty points
-void DeleteChainData(link* head) {
-    while (head != nullptr) {
-        head->free = true;
-        head = head->next;
+// marks all the cain as free without deleting the links themeslves
+void DeleteChainData(link* HEAD) {
+    while (HEAD != nullptr) {
+        HEAD->free = true;
+        HEAD = HEAD->next;
     }
 }
 
@@ -275,84 +327,84 @@ snapshot CreateSnapshot(bool** state, sector sector) {
 }
 
 // fills the given array with cells nearby, alive or all according to the setting
-void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cellY, point* neighbors, bool* filled, bool live_only = false) {
+void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cellY, bool live_only = false) {
     int i = 0;
     point tmp;
 
     // counting neighbors, looping edges
-    filled[i] = false;
+    FILLED[i] = false;
     if (cellX > BORDER_SIZE && (!live_only || state_copy[cellX - 1][cellY] == ALIVE)) { // left
         tmp.cellX = cellX - 1;
         tmp.cellY = cellY;
-        neighbors[i] = tmp;
-        filled[i] = true;
+        NEIGHBORS[i] = tmp;
+        FILLED[i] = true;
     }
     i++;
 
-    filled[i] = false;
+    FILLED[i] = false;
     if (cellY > BORDER_SIZE && (!live_only || state_copy[cellX][cellY - 1] == ALIVE)) { // up
         tmp.cellX = cellX;
         tmp.cellY = cellY - 1;
-        neighbors[i] = tmp;
-        filled[i] = true;
+        NEIGHBORS[i] = tmp;
+        FILLED[i] = true;
     }
     i++;
 
-    filled[i] = false;
+    FILLED[i] = false;
     if (cellX < maxX - BORDER_SIZE - 1 && (!live_only || state_copy[cellX + 1][cellY] == ALIVE)) { // right
         tmp.cellX = cellX + 1;
         tmp.cellY = cellY;
-        neighbors[i] = tmp;
-        filled[i] = true;
+        NEIGHBORS[i] = tmp;
+        FILLED[i] = true;
     }
     i++;
 
-    filled[i] = false;
+    FILLED[i] = false;
     if (cellY < maxY - BORDER_SIZE - 1 && (!live_only || state_copy[cellX][cellY + 1] == ALIVE)) { // down
         tmp.cellX = cellX;
         tmp.cellY = cellY + 1;
-        neighbors[i] = tmp;
-        filled[i] = true;
+        NEIGHBORS[i] = tmp;
+        FILLED[i] = true;
     }
     i++;
 
-    filled[i] = false;
+    FILLED[i] = false;
     if (cellX > BORDER_SIZE && cellY > BORDER_SIZE // top left
         && (!live_only || state_copy[cellX - 1][cellY - 1] == ALIVE)) {
         tmp.cellX = cellX - 1;
         tmp.cellY = cellY - 1;
-        neighbors[i] = tmp;
-        filled[i] = true;
+        NEIGHBORS[i] = tmp;
+        FILLED[i] = true;
     }
     i++;
 
-    filled[i] = false;
+    FILLED[i] = false;
     if (cellX < maxX - BORDER_SIZE - 1 && cellY < maxY - BORDER_SIZE - 1 // bottom right
         && (!live_only || state_copy[cellX + 1][cellY + 1] == ALIVE)) {
         tmp.cellX = cellX + 1;
         tmp.cellY = cellY + 1;
-        neighbors[i] = tmp;
-        filled[i] = true;
+        NEIGHBORS[i] = tmp;
+        FILLED[i] = true;
     }
     i++;
 
-    filled[i] = false;
+    FILLED[i] = false;
     if (cellX < maxX - BORDER_SIZE - 1 && cellY > BORDER_SIZE // top right
         && (!live_only || state_copy[cellX + 1][cellY - 1] == ALIVE)) {
         tmp.cellX = cellX + 1;
         tmp.cellY = cellY - 1;
-        neighbors[i] = tmp;
-        filled[i] = true;
+        NEIGHBORS[i] = tmp;
+        FILLED[i] = true;
     }
     i++;
 
-    filled[i] = false;
+    FILLED[i] = false;
     if (cellX > BORDER_SIZE && cellY < maxY - BORDER_SIZE - 1 // bottom left
         && (!live_only || state_copy[cellX - 1][cellY + 1] == ALIVE)) {
         tmp.cellX = cellX - 1;
         tmp.cellY = cellY + 1;
-        neighbors[i] = tmp;
-        filled[i] = true;
+        NEIGHBORS[i] = tmp;
+        FILLED[i] = true;
     }
 }
 
@@ -376,49 +428,38 @@ void UpdateClusterOutline(point& point, sector& outline) {
 }
 
 // finds a cluster of points connected to the given coordinates and saves them to the given chain
-void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, link* head, int& cluster_size, sector& outline, point* neighbors, bool* filled) {
-    
+void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, int& cluster_size, sector& outline) {
+
     outline.startX = INT_MAX;
     outline.endX = INT_MIN;
     outline.startY = INT_MAX;
     outline.endY = INT_MIN;
-    queue<point> check_list;
     cluster_size = 0;
 
     point current_point = point{ cellX, cellY };
-    UpdateClusterOutline(current_point, outline);
-    state_copy[cellX][cellY] = DEAD; // marking saved cells as dead
-    cluster_size++;
+    AddData(current_point); // pushing current cell to the stack
+    link* first_link;
 
-    FindAllNeighbors(state_copy, maxX, maxY, cellX, cellY, neighbors, filled, true);
-    for (int i = 0; i < 8; i++) {
-        if (filled[i]) {
-            check_list.push(point{ neighbors[i].cellX, neighbors[i].cellY });
-        }
-    }
-    if (true == filled[0]) // for debug only, something that dosent run EVERY SINGLE while check
+    while (!IsEmpty())
     {
-        char ok = 'l';
-    }
+        first_link = GetFirstLink();
+        current_point = first_link->data;
 
-    while (!check_list.empty())
-    {
-        current_point = check_list.front();
         if (state_copy[current_point.cellX][current_point.cellY] = ALIVE) // check if the cell was procces by another neighbor
         {
             UpdateClusterOutline(current_point, outline);
             state_copy[current_point.cellX][current_point.cellY] = DEAD;
             cluster_size++;
 
-            FindAllNeighbors(state_copy, maxX, maxY, cellX, cellY, neighbors, filled, true);
+            FindAllNeighbors(state_copy, maxX, maxY, cellX, cellY, true);
             for (int i = 0; i < 8; i++) {
-                if (filled[i]) {
-                    check_list.push(point{ neighbors[i].cellX, neighbors[i].cellY });
+                if (FILLED[i]) {
+                    AddData(point{ NEIGHBORS[i].cellX, NEIGHBORS[i].cellY });
                 }
             }
         }
 
-        check_list.pop();
+        FreeLink(first_link);
     }
 }
 
@@ -578,7 +619,7 @@ void UpdateScreen(bool** current_state, int maxX, int maxY, bool** old_state = N
             }
         }
     }
-    
+
     HWND myconsole = GetConsoleWindow();
     HDC mydc = GetDC(myconsole);
     HBITMAP bitmap = CreateBitmap(real_maxX, real_maxY, 1, 8 * 4, (void*)colors);
@@ -756,16 +797,16 @@ bool CellStatus(bool** old_state, int cellX, int cellY, int maxX, int maxY) {
 }
 
 // updates the neighbors of the given cell
-void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, int maxX, int maxY, int cellX, int cellY, point* neighbors, bool* filled) {
+void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, int maxX, int maxY, int cellX, int cellY) {
     old_copy[cellX][cellY] = DEAD; // marking itself as dead
     int currX;
     int currY;
-    FindAllNeighbors(old_copy, maxX, maxY, cellX, cellY, neighbors, filled);
+    FindAllNeighbors(old_copy, maxX, maxY, cellX, cellY);
 
     for (int i = 0; i < 8; i++) {
-        currX = neighbors[i].cellX;
-        currY = neighbors[i].cellY;
-        if (filled[i]) {
+        currX = NEIGHBORS[i].cellX;
+        currY = NEIGHBORS[i].cellY;
+        if (FILLED[i]) {
             old_copy[currX][currY] = DEAD;
             current_state[currX][currY] = CellStatus(old_state, currX, currY, maxX, maxY);
         }
@@ -820,7 +861,7 @@ void BorderSetter(bool** current_state, int maxX, int maxY) {
 }
 
 // updates the world to the next iteration
-void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY, point* neighbors, bool* filled) {
+void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY) {
     bool** old_copy = CopyMatrix(old_state, maxX, maxY);
 
     // force update left and right edges
@@ -839,7 +880,7 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
         for (int cellY = BORDER_SIZE; cellY < maxY - BORDER_SIZE; cellY++) {
             if (old_copy[cellX][cellY] == ALIVE) {
                 current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
-                UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY, neighbors, filled);
+                UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY);
             }
         }
     }
@@ -847,8 +888,6 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
     BorderSetter(current_state, maxX, maxY);
 
     DeleteMatrix<bool>(old_copy);
-    delete[] neighbors;
-    delete[] filled;
 }
 
 // check if life has exausted itself in the system
@@ -1018,7 +1057,7 @@ bool HandleResponse(char response) {
 }
 
 // handles search and creation of outlines all the way ot the display
-void OutlineCaller(bool** current_state, int maxX, int maxY, link* head, COLORREF* colors, point* neighbors, bool* filled) {
+void OutlineCaller(bool** current_state, int maxX, int maxY, COLORREF* colors) {
     // get sll the cells on screen
     for (int cellX = 0; cellX < maxX; cellX++) {
         for (int cellY = 0; cellY < maxY; cellY++) {
@@ -1057,7 +1096,7 @@ void OutlineCaller(bool** current_state, int maxX, int maxY, link* head, COLORRE
     for (int cellX = 0; cellX < maxX; cellX++) {
         for (int cellY = 0; cellY < maxY; cellY++) {
             if (state_copy[cellX][cellY] == ALIVE) {
-                FindCluster(state_copy, maxX, maxY, cellX, cellY, head, cluster_size, outline, neighbors, filled);
+                FindCluster(state_copy, maxX, maxY, cellX, cellY, cluster_size, outline);
                 if (cluster_size > pass_size) { // clusters of less than the constant CANNOT survive, no matter the arrangment
                     DrawSectorOutline(outline, colors, maxX, maxY);
                 }
@@ -1112,19 +1151,12 @@ int main() {
     bool** old_state = CreateMatrix<bool>(maxX, maxY); // purly to stop the 'uninitialised used'
     bool initial;
     int gen = 0;
-    point* neighbors = new point[8];
-    bool* filled = new bool[8];
 
 #ifdef BITMAP
     COLORREF* colors = (COLORREF*)calloc(maxX * maxY, sizeof(COLORREF));
 #else
     COLORREF* colors = nullptr;
 #endif // BITMAP
-
-#ifndef NOOUTLINES
-    link* head = nullptr;
-#endif // !NOOUTLINES
-
 
 #ifdef UNCERTAIN
     char response = 'y';
@@ -1150,12 +1182,12 @@ int main() {
 
             // initial render
 #ifndef NOOUTLINES
-            OutlineCaller(current_state, maxX, maxY, head, colors, neighbors, filled);
+            OutlineCaller(current_state, maxX, maxY, colors);
 #else
             UpdateScreen(current_state, maxX, maxY, old_state, true, colors);
 #endif // !NOOUTLINES
 
-            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 55) {
+            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 20) {
 
 #if defined(PATIENT) || defined(TEXTPRINT)
                 Sleep(1500);
@@ -1170,10 +1202,10 @@ int main() {
 
                 DeleteMatrix<bool>(old_state); // idea: overwrite instead of deleting
                 old_state = CopyMatrix(current_state, maxX, maxY);
-                UpdateStateMatrix(old_state, current_state, maxX, maxY, neighbors, filled);
+                UpdateStateMatrix(old_state, current_state, maxX, maxY);
 
 #ifndef NOOUTLINES
-                OutlineCaller(current_state, maxX, maxY, head, colors, neighbors, filled); // crash here, queue add, not first outline call
+                OutlineCaller(current_state, maxX, maxY, colors); // crash here, queue add, not first outline call
 #else
                 UpdateScreen(current_state, maxX, maxY, old_state, false, colors);
 #endif // !NOOUTLINES
@@ -1197,7 +1229,7 @@ int main() {
 
 
 #ifndef NOOUTLINES
-    DeleteChain(head);
+    DeleteChain();
 #endif // !NOOUTLINES
 
     return 0;
