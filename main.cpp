@@ -463,35 +463,6 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, in
     }
 }
 
-// finds all clusters in the given state and saves them to the given vector
-//void FindClusters(bool** state, int maxX, int maxY, vector<vector<point>>& clusters) {
-//    bool** state_copy = CopyMatrix(state, maxX, maxY);
-//
-//    for (int cellX = 0; cellX < maxX; cellX++) {
-//        for (int cellY = 0; cellY < maxY; cellY++) {
-//            if (state_copy[cellX][cellY] == ALIVE) {
-//                clusters.push_back(vector<point>{});
-//                FindCluster(state_copy, maxX, maxY, cellX, cellY, clusters.back());
-//                if (clusters.back().size() <= MIN_SURVIVAL) { // clusters of less than the constant CANNOT survive, no matter the arrangment
-//                    clusters.pop_back();
-//                }
-//            }
-//        }
-//    }
-//
-//    DeleteMatrix<bool>(state_copy);
-//}
-
-// writes all outlines in the given vector to the given outline vector
-//void UpdateClusterOutlines(vector<vector<point>>& clusters, vector<sector>& outlines) {
-//    while (!clusters.empty()) {
-//        outlines.push_back(sector{});
-//        UpdateClusterOutline(clusters.back(), outlines.back());
-//
-//        clusters.pop_back();
-//    }
-//}
-
 // Get the maxX and maxY screen sizes in pixel
 void GetDesktopResolution(int& maxX, int& maxY)
 {
@@ -699,19 +670,6 @@ void DrawSectorOutline(sector sector, COLORREF* colors = nullptr, int maxX = 0, 
 #endif // BITMAP
 
 }
-
-// adds all outlines to the display
-//void DrawSectorOutlines(vector<sector> sectors) {
-//    HWND myconsole = GetConsoleWindow();
-//    HDC mydc = GetDC(myconsole);
-//
-//    while (!sectors.empty()) {
-//        DrawSectorOutline(sectors.back());
-//        sectors.pop_back();
-//    }
-//
-//    ReleaseDC(myconsole, mydc);
-//}
 
 // deletes the given outline from the display
 void ClearSectorOutline(sector& sector) {
