@@ -11,7 +11,7 @@
 #define FHD
 // FHD will force the screen to 1080p, windows scaling fucks up the automatic detection
 // NATIVE will allow adapting to the resolution of the display
-#define NODELAY
+#define PATIENT
 // PATIENT will wait before rendering each genereation
 // SCENIC will slow the rendering enough for comftable viewing
 // NODELAY will disable the sleep between renders
@@ -158,12 +158,10 @@ void AddData(point data) {
         }
         HEAD = HEAD->next;
     }
+    HEAD = backup; // reset HEAD position
 
     if (!added) { // if no free cells were found
         AddLink(data);
-    }
-    else {
-        HEAD = backup;
     }
 }
 
@@ -451,7 +449,7 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, in
             state_copy[current_point.cellX][current_point.cellY] = DEAD;
             cluster_size++;
 
-            FindAllNeighbors(state_copy, maxX, maxY, cellX, cellY, true);
+            FindAllNeighbors(state_copy, maxX, maxY, current_point.cellX, current_point.cellY, true);
             for (int i = 0; i < 8; i++) {
                 if (FILLED[i]) {
                     AddData(point{ NEIGHBORS[i].cellX, NEIGHBORS[i].cellY });
@@ -1138,6 +1136,20 @@ int main() {
             initial = true;
             gen = 0;
 
+            //// debug seting cells
+            //current_state[BORDER_SIZE][BORDER_SIZE] = DEAD;
+            //current_state[BORDER_SIZE][BORDER_SIZE + 1] = DEAD;
+            //current_state[BORDER_SIZE][BORDER_SIZE + 2] = DEAD;
+            //current_state[BORDER_SIZE][BORDER_SIZE + 3] = DEAD;
+            //current_state[BORDER_SIZE + 1][BORDER_SIZE] = ALIVE;
+            //current_state[BORDER_SIZE + 1][BORDER_SIZE + 1] = ALIVE;
+            //current_state[BORDER_SIZE + 1][BORDER_SIZE + 2] = ALIVE;
+            //current_state[BORDER_SIZE + 1][BORDER_SIZE + 3] = DEAD;
+            //current_state[BORDER_SIZE + 2][BORDER_SIZE] = DEAD;
+            //current_state[BORDER_SIZE + 2][BORDER_SIZE + 1] = DEAD;
+            //current_state[BORDER_SIZE + 2][BORDER_SIZE + 2] = DEAD;
+            //current_state[BORDER_SIZE + 2][BORDER_SIZE + 3] = DEAD;
+
             // initial render
 #ifndef NOOUTLINES
             OutlineCaller(current_state, maxX, maxY, colors);
@@ -1145,7 +1157,7 @@ int main() {
             UpdateScreen(current_state, maxX, maxY, old_state, true, colors);
 #endif // !NOOUTLINES
 
-            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 20) {
+            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 50) {
 
 #if defined(PATIENT) || defined(TEXTPRINT)
                 Sleep(1500);
