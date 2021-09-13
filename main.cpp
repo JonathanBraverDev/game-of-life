@@ -185,6 +185,7 @@ link* GetFirstLink() {
     return first;
 }
 
+// marks the given link as free
 void FreeLink(link* link) {
     link->free = true;
     CURRENT_DATA--; // allows for abuse and negative values, resonable calls expected
@@ -248,7 +249,6 @@ sector CreateSector(int startX, int endX, int startY, int endY) {
     return new_sector;
 }
 
-
 // creates a single block matrix allocation and splits it into arrays
 template <typename T>
 T** CreateMatrix(int maxX, int maxY) {
@@ -280,7 +280,6 @@ T** CopyMatrix(T** original, int maxX, int maxY) {
     return new_matrix;
 }
 
-
 // returns a smaller matrix of an area in the state
 bool** CreateLocalState(bool** state, int startX, int endX, int startY, int endY) {
     bool** local_state = CreateMatrix<bool>(endX - startX, endY - startX);
@@ -306,7 +305,6 @@ bool** CreateLocalState(bool** state, sector sector) {
 
     return local_state;
 }
-
 
 // returns a snapshot of a cestion of the state within the given coprdinates
 snapshot CreateSnapshot(bool** state, int startX, int endX, int startY, int endY) {
@@ -429,7 +427,7 @@ void UpdateClusterOutline(point& point, sector& outline) {
     }
 }
 
-// finds a cluster of points connected to the given coordinates and saves them to the given chain
+// finds a cluster of points connected to the given coordinates and updates the outline
 void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, int& cluster_size, sector& outline) {
 
     outline.startX = INT_MAX;
@@ -451,10 +449,10 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, in
         FindAllNeighbors(state_copy, maxX, maxY, current_point.cellX, current_point.cellY, true);
         for (int i = 0; i < 8; i++) {
             if (FILLED[i]) {
-                // add neibours to search list
+                // add neighbors to search list
                 AddData(point{ NEIGHBORS[i].cellX, NEIGHBORS[i].cellY });
 
-                // procces and mark neibours as such
+                // procces and mark neighbors as such
                 UpdateClusterOutline(current_point, outline);
                 state_copy[current_point.cellX][current_point.cellY] = DEAD;
                 cluster_size++;
@@ -598,7 +596,7 @@ void UpdateScreen(bool** current_state, int maxX, int maxY, bool** old_state = N
     HBITMAP bitmap = CreateBitmap(real_maxX, real_maxY, 1, 8 * 4, (void*)colors);
     HDC scr = CreateCompatibleDC(mydc);
     SelectObject(scr, bitmap);
-    BitBlt(mydc, 0, 0, real_maxX, real_maxY, scr, 0, 0, SRCCOPY);
+    BitBlt(mydc, 0, 0, real_maxX, real_maxY, scr, 1, 1, SRCCOPY);
 
     //DeleteObject(bitmap); // destroyed when function ends
     //DeleteObject(scr);
@@ -649,7 +647,7 @@ void DrawSectorOutline(sector sector, COLORREF* colors = nullptr, int maxX = 0, 
         }
     }
 
-    cellY = min(sector.endY + 1, maxY - BORDER_SIZE - 1);
+    cellY = min(sector.endY + 1, maxY - 1);
     for (cellX = sector.startX - 1; cellX <= sector.endX + 1; cellX++) { // bottom line
         if (cellX >= 0 && cellX < maxX) {
             colors[cellY * maxX + cellX] = COLOR_BORDER;
@@ -663,14 +661,13 @@ void DrawSectorOutline(sector sector, COLORREF* colors = nullptr, int maxX = 0, 
         }
     }
 
-    cellX = min(sector.endX + 1, maxX - BORDER_SIZE - 1);
+    cellX = min(sector.endX + 1, maxX - 1);
     for (cellY = sector.startY - 1; cellY <= sector.endY + 1; cellY++) { // right line
         if (cellY >= 0 && cellY < maxY) {
             colors[cellY * maxX + cellX] = COLOR_BORDER;
         }
     }
 #endif // BITMAP
-
 }
 
 // deletes the given outline from the display
@@ -716,7 +713,7 @@ void ClearSectorOutlines(vector<sector>& sectors) {
     ReleaseDC(myconsole, mydc);
 }
 
-// returns a true if the cell lives or dies base n neibor count
+// returns alive or dead based on neighbor count and defined rules
 bool CellStatus(bool** old_state, int cellX, int cellY, int maxX, int maxY) {
     int neighbors = 0;
     bool status = DEAD;
@@ -829,7 +826,7 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
         current_state[cellX][maxY - BORDER_SIZE - 1] = CellStatus(old_state, cellX, maxY - BORDER_SIZE - 1, maxX, maxY);;
         current_state[cellX][BORDER_SIZE] = CellStatus(old_state, cellX, BORDER_SIZE, maxX, maxY);;
     }
-    // force update left and right edges
+    // force update top and bottom edges
     for (int cellY = BORDER_SIZE - 1; cellY < maxY - BORDER_SIZE; cellY++) {
         current_state[maxX - BORDER_SIZE - 1][cellY] = CellStatus(old_state, maxX - BORDER_SIZE - 1, cellY, maxX, maxY);;
         current_state[BORDER_SIZE][cellY] = CellStatus(old_state, BORDER_SIZE, cellY, maxX, maxY);;
@@ -1070,7 +1067,7 @@ void OutlineCaller(bool** current_state, int maxX, int maxY, COLORREF* colors) {
     HBITMAP bitmap = CreateBitmap(maxX, maxY, 1, 8 * 4, (void*)colors);
     HDC scr = CreateCompatibleDC(mydc);
     SelectObject(scr, bitmap);
-    BitBlt(mydc, 0, 0, maxX, maxY, scr, 0, 0, SRCCOPY);
+    BitBlt(mydc, 0, 0, maxX, maxY, scr, 1, 1, SRCCOPY);
 
     DeleteObject(bitmap);
     DeleteObject(scr);
@@ -1161,7 +1158,7 @@ int main() {
             UpdateScreen(current_state, maxX, maxY, old_state, true, colors);
 #endif // !NOOUTLINES
 
-            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 75) {
+            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 90) {
 
 #if defined(PATIENT) || defined(TEXTPRINT)
                 Sleep(1500);
