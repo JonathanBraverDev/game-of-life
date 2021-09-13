@@ -11,7 +11,7 @@
 #define FHD
 // FHD will force the screen to 1080p, windows scaling fucks up the automatic detection
 // NATIVE will allow adapting to the resolution of the display
-#define PATIENT
+#define NODELAY
 // PATIENT will wait before rendering each genereation
 // SCENIC will slow the rendering enough for comftable viewing
 // NODELAY will disable the sleep between renders
@@ -30,22 +30,22 @@
 #define TRAPPED
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
-#define SURVIVING
+#define NOTABLE
 // NOOUTLINES will not show outlines // !IMPORTANT! uses more memory that outlines, 23 vs 16
 // ALL will outline any cluster lasrger than a single cell
 // SURVIVING will outline clusters who are expected to survive
 // NOTABLE will outline clusters with more likly activity
 // LARGE will outline clusters of significant size
 
-#define NORMAL
-// NORMAL will set the survival parameters to their respective defaults
-// LUSH will increase max population, multiplication and survival rates
+#define LUSH
+// NORMAL will set the survival parameters to their respective defaults (bitmap generation and filling ~25% runtime, Nooutlines's the same)
+// LUSH will increase max population, multiplication and survival rates (stack operations ~50% combined runtime, 60% CellStatus Nooutlines)
 // PARADISE will unlock the secrets to ethernal life
 // CRUEL will see like swiftly eradicated
 
 using namespace std;
 #ifdef RANDOM
-constexpr auto INITIAL_LIFE_RATIO = 10; // this is an INVERSE (1 is EVERY pixel)
+constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
 const bool ALIVE = true;
 const bool DEAD = false;
@@ -134,6 +134,7 @@ struct link
 link* HEAD = nullptr;
 point* NEIGHBORS = new point[8];
 bool* FILLED = new bool[8];
+int CURRENT_DATA = 0;
 
 //creates a link with the given data
 void AddLink(point data) {
@@ -163,6 +164,8 @@ void AddData(point data) {
     if (!added) { // if no free cells were found
         AddLink(data);
     }
+
+    CURRENT_DATA++;
 }
 
 // returns the first filled link in the chain
@@ -184,6 +187,7 @@ link* GetFirstLink() {
 
 void FreeLink(link* link) {
     link->free = true;
+    CURRENT_DATA--; // allows for abuse and negative values, resonable calls expected
 }
 
 // returns true if the chain has no current data, false otherwise
@@ -438,22 +442,22 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, in
     AddData(current_point); // pushing current cell to the stack
     link* first_link;
 
-    while (!IsEmpty())
+
+    while (CURRENT_DATA > 0)
     {
         first_link = GetFirstLink();
         current_point = first_link->data;
 
-        if (state_copy[current_point.cellX][current_point.cellY] = ALIVE) // check if the cell was procces by another neighbor
-        {
-            UpdateClusterOutline(current_point, outline);
-            state_copy[current_point.cellX][current_point.cellY] = DEAD;
-            cluster_size++;
+        FindAllNeighbors(state_copy, maxX, maxY, current_point.cellX, current_point.cellY, true);
+        for (int i = 0; i < 8; i++) {
+            if (FILLED[i]) {
+                // add neibours to search list
+                AddData(point{ NEIGHBORS[i].cellX, NEIGHBORS[i].cellY });
 
-            FindAllNeighbors(state_copy, maxX, maxY, current_point.cellX, current_point.cellY, true);
-            for (int i = 0; i < 8; i++) {
-                if (FILLED[i]) {
-                    AddData(point{ NEIGHBORS[i].cellX, NEIGHBORS[i].cellY });
-                }
+                // procces and mark neibours as such
+                UpdateClusterOutline(current_point, outline);
+                state_copy[current_point.cellX][current_point.cellY] = DEAD;
+                cluster_size++;
             }
         }
 
@@ -1157,7 +1161,7 @@ int main() {
             UpdateScreen(current_state, maxX, maxY, old_state, true, colors);
 #endif // !NOOUTLINES
 
-            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 50) {
+            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 75) {
 
 #if defined(PATIENT) || defined(TEXTPRINT)
                 Sleep(1500);
