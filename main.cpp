@@ -596,7 +596,7 @@ void UpdateScreen(bool** current_state, int maxX, int maxY, bool** old_state = N
     HBITMAP bitmap = CreateBitmap(real_maxX, real_maxY, 1, 8 * 4, (void*)colors);
     HDC scr = CreateCompatibleDC(mydc);
     SelectObject(scr, bitmap);
-    BitBlt(mydc, 0, 0, real_maxX, real_maxY, scr, 1, 1, SRCCOPY);
+    BitBlt(mydc, 0, 0, real_maxX, real_maxY, scr, 0, 0, SRCCOPY);
 
     //DeleteObject(bitmap); // destroyed when function ends
     //DeleteObject(scr);
