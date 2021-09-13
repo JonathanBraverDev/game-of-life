@@ -1158,7 +1158,7 @@ int main() {
             UpdateScreen(current_state, maxX, maxY, old_state, true, colors);
 #endif // !NOOUTLINES
 
-            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 90) {
+            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 75) {
 
 #if defined(PATIENT) || defined(TEXTPRINT)
                 Sleep(1500);
@@ -1191,7 +1191,8 @@ int main() {
         }
 #endif // DOOMED
 
-    //DeleteMatrix<bool>(old_state);
+    // deleting states
+    DeleteMatrix<bool>(old_state);
     DeleteMatrix<bool>(current_state);
 
 #ifdef BITMAP
@@ -1202,6 +1203,11 @@ int main() {
 #ifndef NOOUTLINES
     DeleteChain();
 #endif // !NOOUTLINES
+    
+    // deleting global pointers
+    delete HEAD;
+    delete[] NEIGHBORS;
+    delete[] FILLED;
 
     return 0;
 }
