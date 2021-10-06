@@ -11,13 +11,14 @@
 #define FHD
 // FHD will force the screen to 1080p, windows scaling fucks up the automatic detection
 // NATIVE will allow adapting to the resolution of the display
-#define NODELAY
+#define SCENIC
 // PATIENT will wait before rendering each genereation
 // SCENIC will slow the rendering enough for comftable viewing
 // NODELAY will disable the sleep between renders
 #define BRUTAL
 // EFFICENT will run until the activity drops low enogh to be boring
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
+// TIMED will run the shortest between a set amount of generations and EFFICENT mode
 #define BITMAP
 // LINEAR will render the scren as a big chunk (old and slow)
 // MULTIRENDER will split rendering into a few columns (old and slow)
@@ -30,14 +31,20 @@
 #define TRAPPED
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
-#define NOTABLE
+#define SURVIVING
 // NOOUTLINES will not show outlines // !IMPORTANT! uses more memory that outlines, 23 vs 16
 // ALL will outline any cluster lasrger than a single cell
 // SURVIVING will outline clusters who are expected to survive
 // NOTABLE will outline clusters with more likly activity
 // LARGE will outline clusters of significant size
+#define MULTISTATUS
+// MULTISTATUS will use unlimited threads to update cell status
+// SINGLESTATUS will not
+#define MULTICLUSTER
+// MULTICLUSTER will use unlimited threads to find clusters
+// SINGLECLUSTER
 
-#define LUSH
+#define NORMAL
 // NORMAL will set the survival parameters to their respective defaults (bitmap generation and filling ~25% runtime, Nooutlines's the same)
 // LUSH will increase max population, multiplication and survival rates (stack operations ~50% combined runtime, 60% CellStatus Nooutlines)
 // PARADISE will unlock the secrets to ethernal life
@@ -47,9 +54,13 @@ using namespace std;
 #ifdef RANDOM
 constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
+#ifdef TIMED
+constexpr auto MAX_GEN = 80;
+#endif // TIMED
 const bool ALIVE = true;
 const bool DEAD = false;
 const int BORDER_SIZE = 1;
+const int THREAD_LIMIT = thread::hardware_concurrency();
 
 
 #ifdef NORMAL
@@ -435,11 +446,16 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, in
     outline.startY = INT_MAX;
     outline.endY = INT_MIN;
     cluster_size = 0;
-
-    point current_point = point{ cellX, cellY };
-    AddData(current_point); // pushing current cell to the stack
     link* first_link;
 
+    // pushing the first cell to the stack
+    point current_point = point{ cellX, cellY };
+    AddData(current_point);
+
+    // procces first point
+    UpdateClusterOutline(current_point, outline);
+    state_copy[current_point.cellX][current_point.cellY] = DEAD;
+    cluster_size++;
 
     while (CURRENT_DATA > 0)
     {
@@ -452,8 +468,8 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, in
                 // add neighbors to search list
                 AddData(point{ NEIGHBORS[i].cellX, NEIGHBORS[i].cellY });
 
-                // procces and mark neighbors as such
-                UpdateClusterOutline(current_point, outline);
+                // procces neighbors
+                UpdateClusterOutline(NEIGHBORS[i], outline);
                 state_copy[current_point.cellX][current_point.cellY] = DEAD;
                 cluster_size++;
             }
@@ -761,10 +777,14 @@ void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, in
     FindAllNeighbors(old_copy, maxX, maxY, cellX, cellY);
 
     for (int i = 0; i < 8; i++) {
-        currX = NEIGHBORS[i].cellX;
-        currY = NEIGHBORS[i].cellY;
         if (FILLED[i]) {
+            currX = NEIGHBORS[i].cellX;
+            currY = NEIGHBORS[i].cellY;
+
+#ifndef MULTISTATUS // memory safty issues, i assume interferance with other 'FindAllNeighbors' and 'CellStatus' calls
             old_copy[currX][currY] = DEAD;
+#endif // !MULTISTATUS
+
             current_state[currX][currY] = CellStatus(old_state, currX, currY, maxX, maxY);
         }
     }
@@ -817,6 +837,11 @@ void BorderSetter(bool** current_state, int maxX, int maxY) {
 #endif // LOOPING
 }
 
+void UpdateThread(bool** old_state, bool** old_copy, bool** current_state, int maxX, int maxY, int cellX, int cellY) {
+    current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
+    UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY);
+}
+
 // updates the world to the next iteration
 void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY) {
     bool** old_copy = CopyMatrix(old_state, maxX, maxY);
@@ -832,7 +857,7 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
         current_state[BORDER_SIZE][cellY] = CellStatus(old_state, BORDER_SIZE, cellY, maxX, maxY);;
     }
 
-
+#ifndef MULTISTATUS
     for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
         for (int cellY = BORDER_SIZE; cellY < maxY - BORDER_SIZE; cellY++) {
             if (old_copy[cellX][cellY] == ALIVE) {
@@ -841,6 +866,31 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
             }
         }
     }
+#endif // !MULTISTATUS
+
+#ifdef MULTISTATUS
+    thread** thread_matrix = CreateMatrix<thread>(maxX, maxY);
+
+    // saving threads to the locations on the cells
+    for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
+        for (int cellY = BORDER_SIZE; cellY < maxY - BORDER_SIZE; cellY++) {
+            if (old_copy[cellX][cellY] == ALIVE) {
+                thread_matrix[cellX][cellY] = thread(UpdateThread, old_state, old_copy, current_state, maxX, maxY, cellX, cellY);
+            }
+        }
+    }
+
+    // retriving thereds based on the same locations
+    for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
+        for (int cellY = BORDER_SIZE; cellY < maxY - BORDER_SIZE; cellY++) {
+            if (old_copy[cellX][cellY] == ALIVE) {
+                thread_matrix[cellX][cellY].join();
+            }
+        }
+    }
+
+    DeleteMatrix<thread>(thread_matrix);
+#endif // MULTISTATUS
 
     BorderSetter(current_state, maxX, maxY);
 
@@ -1122,73 +1172,82 @@ int main() {
 #ifdef RESURGENT
     while (true)
 #endif // RESURGENT
+
 #ifdef UNCERTAIN
-        while (HandleResponse(response) != false)
+    while (HandleResponse(response) != false)
 #endif // UNCERTAIN
 
 #ifndef DOOMED
-        {
+    {
 #endif // DOOMED
 
-            // fill the sceeen according to settings
-            Initialize(current_state, maxX, maxY);
-            DeleteMatrix<bool>(old_state);
-            old_state = CopyMatrix(current_state, maxX, maxY);
-            initial = true;
-            gen = 0;
+        // fill the sceeen according to settings
+        Initialize(current_state, maxX, maxY);
+        DeleteMatrix<bool>(old_state);
+        old_state = CopyMatrix(current_state, maxX, maxY);
+        initial = true;
+#ifdef TIMED
+        gen = 0;
+#endif
 
-            //// debug seting cells
-            //current_state[BORDER_SIZE][BORDER_SIZE] = DEAD;
-            //current_state[BORDER_SIZE][BORDER_SIZE + 1] = DEAD;
-            //current_state[BORDER_SIZE][BORDER_SIZE + 2] = DEAD;
-            //current_state[BORDER_SIZE][BORDER_SIZE + 3] = DEAD;
-            //current_state[BORDER_SIZE + 1][BORDER_SIZE] = ALIVE;
-            //current_state[BORDER_SIZE + 1][BORDER_SIZE + 1] = ALIVE;
-            //current_state[BORDER_SIZE + 1][BORDER_SIZE + 2] = ALIVE;
-            //current_state[BORDER_SIZE + 1][BORDER_SIZE + 3] = DEAD;
-            //current_state[BORDER_SIZE + 2][BORDER_SIZE] = DEAD;
-            //current_state[BORDER_SIZE + 2][BORDER_SIZE + 1] = DEAD;
-            //current_state[BORDER_SIZE + 2][BORDER_SIZE + 2] = DEAD;
-            //current_state[BORDER_SIZE + 2][BORDER_SIZE + 3] = DEAD;
+        //// debug seting cells
+        //current_state[BORDER_SIZE][BORDER_SIZE] = DEAD;
+        //current_state[BORDER_SIZE][BORDER_SIZE + 1] = DEAD;
+        //current_state[BORDER_SIZE][BORDER_SIZE + 2] = DEAD;
+        //current_state[BORDER_SIZE][BORDER_SIZE + 3] = DEAD;
+        //current_state[BORDER_SIZE + 1][BORDER_SIZE] = ALIVE;
+        //current_state[BORDER_SIZE + 1][BORDER_SIZE + 1] = ALIVE;
+        //current_state[BORDER_SIZE + 1][BORDER_SIZE + 2] = ALIVE;
+        //current_state[BORDER_SIZE + 1][BORDER_SIZE + 3] = DEAD;
+        //current_state[BORDER_SIZE + 2][BORDER_SIZE] = DEAD;
+        //current_state[BORDER_SIZE + 2][BORDER_SIZE + 1] = DEAD;
+        //current_state[BORDER_SIZE + 2][BORDER_SIZE + 2] = DEAD;
+        //current_state[BORDER_SIZE + 2][BORDER_SIZE + 3] = DEAD;
 
-            // initial render
+        // initial render
 #ifndef NOOUTLINES
-            OutlineCaller(current_state, maxX, maxY, colors);
+        OutlineCaller(current_state, maxX, maxY, colors);
 #else
-            UpdateScreen(current_state, maxX, maxY, old_state, true, colors);
+        UpdateScreen(current_state, maxX, maxY, old_state, true, colors);
 #endif // !NOOUTLINES
 
-            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 75) {
+#ifdef TIMED
+        while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 80) {
+#else
+        while (initial || !EndOfCycle(old_state, current_state, maxX, maxY)) {
+#endif // TIMED
 
 #if defined(PATIENT) || defined(TEXTPRINT)
-                Sleep(1500);
+            Sleep(1500);
 #endif // defined(PATIENT) || defined(TEXTPRINT)
 #ifdef SCENIC
-                Sleep(250);
+            Sleep(250);
 #endif // SCENIC
 
-                gen++;
-                initial = false;
-                //ClearSectorOutlines(outlines);
+#ifdef TIMED
+            gen++;
+#endif
+            initial = false;
+            //ClearSectorOutlines(outlines);
 
-                DeleteMatrix<bool>(old_state); // idea: overwrite instead of deleting
-                old_state = CopyMatrix(current_state, maxX, maxY);
-                UpdateStateMatrix(old_state, current_state, maxX, maxY);
+            DeleteMatrix<bool>(old_state); // idea: overwrite instead of deleting
+            old_state = CopyMatrix(current_state, maxX, maxY);
+            UpdateStateMatrix(old_state, current_state, maxX, maxY);
 
 #ifndef NOOUTLINES
-                OutlineCaller(current_state, maxX, maxY, colors); // crash here, queue add, not first outline call
+            OutlineCaller(current_state, maxX, maxY, colors); // crash here, queue add, not first outline call
 #else
-                UpdateScreen(current_state, maxX, maxY, old_state, false, colors);
+            UpdateScreen(current_state, maxX, maxY, old_state, false, colors);
 #endif // !NOOUTLINES
-            }
+        }
 
 #ifdef UNCERTAIN
-            cout << "restart? (y/n)" << endl;
-            cin >> response;
+        cout << "restart? (y/n)" << endl;
+        cin >> response;
 #endif // UNCERTAIN
 
 #ifndef DOOMED
-        }
+    }
 #endif // DOOMED
 
     // deleting states
@@ -1203,7 +1262,7 @@ int main() {
 #ifndef NOOUTLINES
     DeleteChain();
 #endif // !NOOUTLINES
-    
+
     // deleting global pointers
     delete HEAD;
     delete[] NEIGHBORS;
