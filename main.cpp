@@ -11,11 +11,11 @@
 #define FHD
 // FHD will force the screen to 1080p, windows scaling fucks up the automatic detection
 // NATIVE will allow adapting to the resolution of the display
-#define SCENIC
+#define NODELAY
 // PATIENT will wait before rendering each genereation
 // SCENIC will slow the rendering enough for comftable viewing
 // NODELAY will disable the sleep between renders
-#define BRUTAL
+#define TIMED
 // EFFICENT will run until the activity drops low enogh to be boring
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
 // TIMED will run the shortest between a set amount of generations and EFFICENT mode
@@ -37,9 +37,12 @@
 // SURVIVING will outline clusters who are expected to survive
 // NOTABLE will outline clusters with more likly activity
 // LARGE will outline clusters of significant size
-#define SINGLE
-// MULTISTATUS will run multiple theads to update cell status (good for a full screen)
-// SINGLE will not (good for an empty screen)
+#define MULTISTATUS
+// MULTISTATUS will use unlimited threads to update cell status
+// SINGLESTATUS will not
+#define MULTICLUSTER
+// MULTICLUSTER will use unlimited threads to find clusters
+// SINGLECLUSTER
 
 #define NORMAL
 // NORMAL will set the survival parameters to their respective defaults (bitmap generation and filling ~25% runtime, Nooutlines's the same)
@@ -52,7 +55,7 @@ using namespace std;
 constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
 #ifdef TIMED
-constexpr auto MAX_GEN = 80;
+constexpr auto MAX_GEN = 200;
 #endif // TIMED
 const bool ALIVE = true;
 const bool DEAD = false;
@@ -883,7 +886,6 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
 #endif // MULTISTATUS
 
     BorderSetter(current_state, maxX, maxY);
-    delete[] threads;
 
     DeleteMatrix<bool>(old_copy);
 }
@@ -961,10 +963,10 @@ bool EndOfCycle(bool** old_state, bool** current_state, int maxX, int maxY) {
 }
 
 // fill the first generation according to selecte ruels
-void Initialize(bool** current_state, int maxX, int maxY) {
+void Initialize(bool** current_state, int maxX, int maxY, unsigned int seed = time(0)) {
 #ifdef RANDOM
     // randomize the first generation
-    srand(time(0));
+    srand(seed);
     for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
         for (int cellY = BORDER_SIZE; cellY < maxY - BORDER_SIZE; cellY++) {
             if (rand() % INITIAL_LIFE_RATIO == 0) {
@@ -1173,7 +1175,8 @@ int main() {
 #endif // DOOMED
 
         // fill the sceeen according to settings
-        Initialize(current_state, maxX, maxY);
+        unsigned int seed = time(0);
+        Initialize(current_state, maxX, maxY, seed);
         DeleteMatrix<bool>(old_state);
         old_state = CopyMatrix(current_state, maxX, maxY);
         initial = true;
@@ -1182,18 +1185,18 @@ int main() {
 #endif
 
         //// debug seting cells
-        current_state[BORDER_SIZE][BORDER_SIZE] = DEAD;
-        current_state[BORDER_SIZE][BORDER_SIZE + 1] = DEAD;
-        current_state[BORDER_SIZE][BORDER_SIZE + 2] = DEAD;
-        current_state[BORDER_SIZE][BORDER_SIZE + 3] = DEAD;
-        current_state[BORDER_SIZE + 1][BORDER_SIZE] = ALIVE;
-        current_state[BORDER_SIZE + 1][BORDER_SIZE + 1] = ALIVE;
-        current_state[BORDER_SIZE + 1][BORDER_SIZE + 2] = ALIVE;
-        current_state[BORDER_SIZE + 1][BORDER_SIZE + 3] = DEAD;
-        current_state[BORDER_SIZE + 2][BORDER_SIZE] = DEAD;
-        current_state[BORDER_SIZE + 2][BORDER_SIZE + 1] = DEAD;
-        current_state[BORDER_SIZE + 2][BORDER_SIZE + 2] = DEAD;
-        current_state[BORDER_SIZE + 2][BORDER_SIZE + 3] = DEAD;
+        //current_state[BORDER_SIZE][BORDER_SIZE] = DEAD;
+        //current_state[BORDER_SIZE][BORDER_SIZE + 1] = DEAD;
+        //current_state[BORDER_SIZE][BORDER_SIZE + 2] = DEAD;
+        //current_state[BORDER_SIZE][BORDER_SIZE + 3] = DEAD;
+        //current_state[BORDER_SIZE + 1][BORDER_SIZE] = ALIVE;
+        //current_state[BORDER_SIZE + 1][BORDER_SIZE + 1] = ALIVE;
+        //current_state[BORDER_SIZE + 1][BORDER_SIZE + 2] = ALIVE;
+        //current_state[BORDER_SIZE + 1][BORDER_SIZE + 3] = DEAD;
+        //current_state[BORDER_SIZE + 2][BORDER_SIZE] = DEAD;
+        //current_state[BORDER_SIZE + 2][BORDER_SIZE + 1] = DEAD;
+        //current_state[BORDER_SIZE + 2][BORDER_SIZE + 2] = DEAD;
+        //current_state[BORDER_SIZE + 2][BORDER_SIZE + 3] = DEAD;
 
         // initial render
 #ifndef NOOUTLINES
@@ -1203,7 +1206,7 @@ int main() {
 #endif // !NOOUTLINES
 
 #ifdef TIMED
-        while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 80) {
+        while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < MAX_GEN) {
 #else
         while (initial || !EndOfCycle(old_state, current_state, maxX, maxY)) {
 #endif // TIMED
