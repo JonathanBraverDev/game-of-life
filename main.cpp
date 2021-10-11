@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <thread>
 #include <vector>
+#include <atomic>
 
 #define RANDOM
 // RANDOM will start with a randomly genereted first generation
@@ -37,7 +38,7 @@
 // SURVIVING will outline clusters who are expected to survive
 // NOTABLE will outline clusters with more likly activity
 // LARGE will outline clusters of significant size
-#define MULTISTATUS
+#define SINGLESTATUS
 // MULTISTATUS will use unlimited threads to update cell status
 // SINGLESTATUS will not
 #define MULTICLUSTER
@@ -57,8 +58,10 @@ constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
 #ifdef TIMED
 constexpr auto MAX_GEN = 200;
 #endif // TIMED
-const bool ALIVE = true;
+const bool ALIVE = true; // setting for easier use
 const bool DEAD = false;
+const bool UPDATED = true;
+const bool PENDING = false;
 const int BORDER_SIZE = 1;
 const int THREAD_LIMIT = thread::hardware_concurrency();
 
@@ -146,6 +149,10 @@ link* HEAD = nullptr;
 point* NEIGHBORS = new point[8];
 bool* FILLED = new bool[8];
 int CURRENT_DATA = 0;
+
+#if defined(MULTISTATUS) || defined (MULTICLUSTER)
+atomic<bool>** shared_state;
+#endif
 
 //creates a link with the given data
 void AddLink(point data) {
@@ -270,6 +277,12 @@ T** CreateMatrix(int maxX, int maxY) {
     }
 
     return matrix;
+}
+
+// deletes the entire memory block, mainly usedto false fill boolean matrixis
+template <typename T>
+T** ZeroFillMatrix(T** matrix, int maxX, int maxY) {
+    memset(matrix, 0, sizeof(T) * maxX * maxY);
 }
 
 // deletes single block allocated matrixes 
@@ -771,7 +784,6 @@ bool CellStatus(bool** old_state, int cellX, int cellY, int maxX, int maxY) {
 
 // updates the neighbors of the given cell
 void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, int maxX, int maxY, int cellX, int cellY) {
-    old_copy[cellX][cellY] = DEAD; // marking itself as dead
     int currX;
     int currY;
     FindAllNeighbors(old_copy, maxX, maxY, cellX, cellY);
@@ -782,7 +794,7 @@ void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, in
             currY = NEIGHBORS[i].cellY;
 
 #ifndef MULTISTATUS // memory safty issues, i assume interferance with other 'FindAllNeighbors' and 'CellStatus' calls
-            old_copy[currX][currY] = DEAD;
+            old_copy[currX][currY] = UPDATED;
 #endif // !MULTISTATUS
 
             current_state[currX][currY] = CellStatus(old_state, currX, currY, maxX, maxY);
@@ -864,16 +876,18 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
         current_state[BORDER_SIZE][cellY] = CellStatus(old_state, BORDER_SIZE, cellY, maxX, maxY);;
     }
 
-#ifndef MULTISTATUS
+#ifdef SINGLESTATUS
     for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
         for (int cellY = BORDER_SIZE; cellY < maxY - BORDER_SIZE; cellY++) {
-            if (old_copy[cellX][cellY] == ALIVE) {
+            if (old_copy[cellX][cellY] == PENDING) {
                 current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
+                old_copy[cellX][cellY] = UPDATED; // marking itself as dead
+
                 UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY);
             }
         }
     }
-#endif // !MULTISTATUS
+#endif // SINGLESTATUS
 
 #ifdef MULTISTATUS
     for (int i = 0; i < THREAD_LIMIT; i++) {
