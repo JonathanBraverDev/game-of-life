@@ -12,7 +12,7 @@
 #define FHD
 // FHD will force the screen to 1080p, windows scaling fucks up the automatic detection
 // NATIVE will allow adapting to the resolution of the display
-#define NODELAY
+#define SCENIC
 // PATIENT will wait before rendering each genereation
 // SCENIC will slow the rendering enough for comftable viewing
 // NODELAY will disable the sleep between renders
@@ -270,13 +270,13 @@ sector CreateSector(int startX, int endX, int startY, int endY) {
     return new_sector;
 }
 
-// creates a matrix with the given dimentions
+// creates a single block matrix allocation and splits it for easier access
 template <typename T>
 T** CreateMatrix(int maxX, int maxY) {
-    T** matrix = new T*[maxX];
+    T** matrix = new T* [maxX];
     matrix[0] = new T[maxX * maxY];
     for (int i = 1; i < maxX; i++) {
-        matrix[i] = matrix[i-1] + maxY;
+        matrix[i] = matrix[i - 1] + maxY;
     }
 
     return matrix;
@@ -285,11 +285,7 @@ T** CreateMatrix(int maxX, int maxY) {
 // zeroes out the matrix without dealocating
 template <typename T>
 void ZeroFillMatrix(T** matrix, int maxX, int maxY) {
-    int size = sizeof(T);
-    for (int i = 0; i < maxX; i++)
-    {
-        memset(matrix[i], 0, size * maxY);
-    }
+    memset(matrix[0], 0, sizeof(T) * maxX * maxY);
 }
 
 // deletes single block allocated matrixes 
@@ -304,9 +300,7 @@ template <typename T>
 T** CopyMatrix(T** original, int maxX, int maxY) {
     T** new_matrix = CreateMatrix<bool>(maxX, maxY);
 
-    for (int cellX = 0; cellX < maxX; cellX++) {
-        copy(original[cellX], original[cellX] + maxY, new_matrix[cellX]);
-    }
+    memcpy(new_matrix[0], original[0], sizeof(T) * maxX * maxY);
 
     return new_matrix;
 }
@@ -868,19 +862,27 @@ void UpdateThread(bool** old_state, bool** old_copy, bool** current_state, int m
     }
 }
 
-// updates the world to the next iteration
+// updates the state to the next iteration
 void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY) {
+#ifdef MULTISTATUS
     thread* threads = new thread[THREAD_LIMIT];
+#endif // MULTISTATUS
 
     // force update left and right edges
     for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
-        current_state[cellX][maxY - BORDER_SIZE - 1] = CellStatus(old_state, cellX, maxY - BORDER_SIZE - 1, maxX, maxY);;
-        current_state[cellX][BORDER_SIZE] = CellStatus(old_state, cellX, BORDER_SIZE, maxX, maxY);;
+        current_state[cellX][maxY - BORDER_SIZE - 1] = CellStatus(old_state, cellX, maxY - BORDER_SIZE - 1, maxX, maxY);
+        current_state[cellX][BORDER_SIZE] = CellStatus(old_state, cellX, BORDER_SIZE, maxX, maxY);
+
+        update_map[cellX][maxY - BORDER_SIZE - 1] = UPDATED;
+        update_map[cellX][BORDER_SIZE] = UPDATED;
     }
     // force update top and bottom edges
     for (int cellY = BORDER_SIZE - 1; cellY < maxY - BORDER_SIZE; cellY++) {
-        current_state[maxX - BORDER_SIZE - 1][cellY] = CellStatus(old_state, maxX - BORDER_SIZE - 1, cellY, maxX, maxY);;
-        current_state[BORDER_SIZE][cellY] = CellStatus(old_state, BORDER_SIZE, cellY, maxX, maxY);;
+        current_state[maxX - BORDER_SIZE - 1][cellY] = CellStatus(old_state, maxX - BORDER_SIZE - 1, cellY, maxX, maxY);
+        current_state[BORDER_SIZE][cellY] = CellStatus(old_state, BORDER_SIZE, cellY, maxX, maxY);
+
+        update_map[maxX - BORDER_SIZE - 1][cellY] = UPDATED;
+        update_map[BORDER_SIZE][cellY] = UPDATED;
     }
 
 #ifdef SINGLESTATUS
@@ -1267,7 +1269,7 @@ int main() {
 #endif // UNCERTAIN
 
 #ifndef DOOMED
-    }
+        }
 #endif // DOOMED
 
     // deleting states
