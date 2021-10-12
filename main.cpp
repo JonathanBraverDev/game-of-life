@@ -32,7 +32,7 @@
 #define TRAPPED
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
-#define SURVIVING
+#define NOOUTLINES
 // NOOUTLINES will not show outlines // !IMPORTANT! uses more memory that outlines, 23 vs 16
 // ALL will outline any cluster lasrger than a single cell
 // SURVIVING will outline clusters who are expected to survive
@@ -151,7 +151,10 @@ bool* FILLED = new bool[8];
 int CURRENT_DATA = 0;
 
 #if defined(MULTISTATUS) || defined (MULTICLUSTER)
-atomic<bool>** shared_state;
+atomic<bool>** shared_update_map;
+#endif
+#if defined(SINGLESTATUS) || defined (SINGLECLUSTER)
+bool** update_map;
 #endif
 
 //creates a link with the given data
@@ -267,22 +270,26 @@ sector CreateSector(int startX, int endX, int startY, int endY) {
     return new_sector;
 }
 
-// creates a single block matrix allocation and splits it into arrays
+// creates a matrix with the given dimentions
 template <typename T>
 T** CreateMatrix(int maxX, int maxY) {
-    T** matrix = new T * [maxX];
+    T** matrix = new T*[maxX];
     matrix[0] = new T[maxX * maxY];
-    for (int cellX = 1; cellX < maxX; cellX++) {
-        matrix[cellX] = matrix[0] + cellX * maxY;
+    for (int i = 1; i < maxX; i++) {
+        matrix[i] = matrix[i-1] + maxY;
     }
 
     return matrix;
 }
 
-// deletes the entire memory block, mainly usedto false fill boolean matrixis
+// zeroes out the matrix without dealocating
 template <typename T>
-T** ZeroFillMatrix(T** matrix, int maxX, int maxY) {
-    memset(matrix, 0, sizeof(T) * maxX * maxY);
+void ZeroFillMatrix(T** matrix, int maxX, int maxY) {
+    int size = sizeof(T);
+    for (int i = 0; i < maxX; i++)
+    {
+        memset(matrix[i], 0, size * maxY);
+    }
 }
 
 // deletes single block allocated matrixes 
@@ -351,13 +358,13 @@ snapshot CreateSnapshot(bool** state, sector sector) {
 }
 
 // fills the given array with cells nearby, alive or all according to the setting
-void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cellY, bool live_only = false) {
+void FindAllNeighbors(bool** state, int maxX, int maxY, int cellX, int cellY, bool live_only = false) {
     int i = 0;
     point tmp;
 
     // counting neighbors, looping edges
     FILLED[i] = false;
-    if (cellX > BORDER_SIZE && (!live_only || state_copy[cellX - 1][cellY] == ALIVE)) { // left
+    if (cellX > BORDER_SIZE && (!live_only || state[cellX - 1][cellY] == ALIVE)) { // left
         tmp.cellX = cellX - 1;
         tmp.cellY = cellY;
         NEIGHBORS[i] = tmp;
@@ -366,7 +373,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
     i++;
 
     FILLED[i] = false;
-    if (cellY > BORDER_SIZE && (!live_only || state_copy[cellX][cellY - 1] == ALIVE)) { // up
+    if (cellY > BORDER_SIZE && (!live_only || state[cellX][cellY - 1] == ALIVE)) { // up
         tmp.cellX = cellX;
         tmp.cellY = cellY - 1;
         NEIGHBORS[i] = tmp;
@@ -375,7 +382,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
     i++;
 
     FILLED[i] = false;
-    if (cellX < maxX - BORDER_SIZE - 1 && (!live_only || state_copy[cellX + 1][cellY] == ALIVE)) { // right
+    if (cellX < maxX - BORDER_SIZE - 1 && (!live_only || state[cellX + 1][cellY] == ALIVE)) { // right
         tmp.cellX = cellX + 1;
         tmp.cellY = cellY;
         NEIGHBORS[i] = tmp;
@@ -384,7 +391,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
     i++;
 
     FILLED[i] = false;
-    if (cellY < maxY - BORDER_SIZE - 1 && (!live_only || state_copy[cellX][cellY + 1] == ALIVE)) { // down
+    if (cellY < maxY - BORDER_SIZE - 1 && (!live_only || state[cellX][cellY + 1] == ALIVE)) { // down
         tmp.cellX = cellX;
         tmp.cellY = cellY + 1;
         NEIGHBORS[i] = tmp;
@@ -394,7 +401,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
 
     FILLED[i] = false;
     if (cellX > BORDER_SIZE && cellY > BORDER_SIZE // top left
-        && (!live_only || state_copy[cellX - 1][cellY - 1] == ALIVE)) {
+        && (!live_only || state[cellX - 1][cellY - 1] == ALIVE)) {
         tmp.cellX = cellX - 1;
         tmp.cellY = cellY - 1;
         NEIGHBORS[i] = tmp;
@@ -404,7 +411,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
 
     FILLED[i] = false;
     if (cellX < maxX - BORDER_SIZE - 1 && cellY < maxY - BORDER_SIZE - 1 // bottom right
-        && (!live_only || state_copy[cellX + 1][cellY + 1] == ALIVE)) {
+        && (!live_only || state[cellX + 1][cellY + 1] == ALIVE)) {
         tmp.cellX = cellX + 1;
         tmp.cellY = cellY + 1;
         NEIGHBORS[i] = tmp;
@@ -414,7 +421,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
 
     FILLED[i] = false;
     if (cellX < maxX - BORDER_SIZE - 1 && cellY > BORDER_SIZE // top right
-        && (!live_only || state_copy[cellX + 1][cellY - 1] == ALIVE)) {
+        && (!live_only || state[cellX + 1][cellY - 1] == ALIVE)) {
         tmp.cellX = cellX + 1;
         tmp.cellY = cellY - 1;
         NEIGHBORS[i] = tmp;
@@ -424,7 +431,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
 
     FILLED[i] = false;
     if (cellX > BORDER_SIZE && cellY < maxY - BORDER_SIZE - 1 // bottom left
-        && (!live_only || state_copy[cellX - 1][cellY + 1] == ALIVE)) {
+        && (!live_only || state[cellX - 1][cellY + 1] == ALIVE)) {
         tmp.cellX = cellX - 1;
         tmp.cellY = cellY + 1;
         NEIGHBORS[i] = tmp;
@@ -783,21 +790,22 @@ bool CellStatus(bool** old_state, int cellX, int cellY, int maxX, int maxY) {
 }
 
 // updates the neighbors of the given cell
-void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, int maxX, int maxY, int cellX, int cellY) {
+void UpdateNeighbors(bool** old_state, bool** current_state, int maxX, int maxY, int cellX, int cellY) {
     int currX;
     int currY;
-    FindAllNeighbors(old_copy, maxX, maxY, cellX, cellY);
+    FindAllNeighbors(old_state, maxX, maxY, cellX, cellY);
 
     for (int i = 0; i < 8; i++) {
         if (FILLED[i]) {
             currX = NEIGHBORS[i].cellX;
             currY = NEIGHBORS[i].cellY;
 
-#ifndef MULTISTATUS // memory safty issues, i assume interferance with other 'FindAllNeighbors' and 'CellStatus' calls
-            old_copy[currX][currY] = UPDATED;
-#endif // !MULTISTATUS
+            // updating the cell only if it wasent updated already
+            if (update_map[currX][currY] == PENDING) {
 
-            current_state[currX][currY] = CellStatus(old_state, currX, currY, maxX, maxY);
+                current_state[currX][currY] = CellStatus(old_state, currX, currY, maxX, maxY);
+                update_map[currX][currY] = UPDATED;
+            }
         }
     }
 }
@@ -828,23 +836,23 @@ void BorderSetter(bool** current_state, int maxX, int maxY) {
 #else
     // handling special cases
     // bottom right to top left
-    current_state[BORDER_SIZE - 1][BORDER_SIZE - 1] = false;
+    current_state[BORDER_SIZE - 1][BORDER_SIZE - 1] = DEAD;
     // top left to bottm right
-    current_state[maxX - BORDER_SIZE][maxY - BORDER_SIZE] = false;
+    current_state[maxX - BORDER_SIZE][maxY - BORDER_SIZE] = DEAD;
     // bottom left to top right
-    current_state[maxX - BORDER_SIZE][BORDER_SIZE - 1] = false;
+    current_state[maxX - BORDER_SIZE][BORDER_SIZE - 1] = DEAD;
     // top right to bottom left 
-    current_state[BORDER_SIZE - 1][maxY - BORDER_SIZE] = false;
+    current_state[BORDER_SIZE - 1][maxY - BORDER_SIZE] = DEAD;
 
     // false fill top and bottom borders
     for (int cellX = BORDER_SIZE; cellX < maxX; cellX++) {
-        current_state[cellX][BORDER_SIZE - 1] = false;
-        current_state[cellX][maxY - BORDER_SIZE] = false;
+        current_state[cellX][BORDER_SIZE - 1] = DEAD;
+        current_state[cellX][maxY - BORDER_SIZE] = DEAD;
     }
     // false fill left and right borders
     for (int cellY = BORDER_SIZE - 1; cellY < maxY; cellY++) {
-        current_state[BORDER_SIZE - 1][cellY] = false;
-        current_state[maxX - BORDER_SIZE][cellY] = false;
+        current_state[BORDER_SIZE - 1][cellY] = DEAD;
+        current_state[maxX - BORDER_SIZE][cellY] = DEAD;
     }
 #endif // LOOPING
 }
@@ -862,7 +870,6 @@ void UpdateThread(bool** old_state, bool** old_copy, bool** current_state, int m
 
 // updates the world to the next iteration
 void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY) {
-    bool** old_copy = CopyMatrix(old_state, maxX, maxY);
     thread* threads = new thread[THREAD_LIMIT];
 
     // force update left and right edges
@@ -877,13 +884,19 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
     }
 
 #ifdef SINGLESTATUS
+    // reset the map for this update sycle
+    ZeroFillMatrix(update_map, maxX, maxY);
+
     for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
         for (int cellY = BORDER_SIZE; cellY < maxY - BORDER_SIZE; cellY++) {
-            if (old_copy[cellX][cellY] == PENDING) {
-                current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
-                old_copy[cellX][cellY] = UPDATED; // marking itself as dead
+            // making sure that the cell is both alive, and wasn't updated yet
+            if (old_state[cellX][cellY] == ALIVE &&
+                update_map[cellX][cellY] == PENDING) {
 
-                UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY);
+                current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
+                update_map[cellX][cellY] = UPDATED;
+
+                UpdateNeighbors(old_state, current_state, maxX, maxY, cellX, cellY);
             }
         }
     }
@@ -900,8 +913,6 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
 #endif // MULTISTATUS
 
     BorderSetter(current_state, maxX, maxY);
-
-    DeleteMatrix<bool>(old_copy);
 }
 
 // check if life has exausted itself in the system
@@ -984,10 +995,10 @@ void Initialize(bool** current_state, int maxX, int maxY, unsigned int seed = ti
     for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
         for (int cellY = BORDER_SIZE; cellY < maxY - BORDER_SIZE; cellY++) {
             if (rand() % INITIAL_LIFE_RATIO == 0) {
-                current_state[cellX][cellY] = true;
+                current_state[cellX][cellY] = ALIVE;
             }
             else {
-                current_state[cellX][cellY] = false;
+                current_state[cellX][cellY] = DEAD;
             }
         }
     }
@@ -1163,6 +1174,7 @@ int main() {
 
     bool** current_state = CreateMatrix<bool>(maxX, maxY);
     bool** old_state = CreateMatrix<bool>(maxX, maxY); // purly to stop the 'uninitialised used'
+    update_map = CreateMatrix<bool>(maxX, maxY);
     bool initial;
     int gen = 0;
 
