@@ -32,7 +32,7 @@
 #define TRAPPED
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
-#define NOOUTLINES
+#define SURVIVING
 // NOOUTLINES will not show outlines // !IMPORTANT! uses more memory that outlines, 23 vs 16
 // ALL will outline any cluster lasrger than a single cell
 // SURVIVING will outline clusters who are expected to survive
@@ -151,10 +151,10 @@ bool* FILLED = new bool[8];
 int CURRENT_DATA = 0;
 
 #if defined(MULTISTATUS) || defined (MULTICLUSTER)
-atomic<bool>** shared_update_map;
+atomic<bool>** SHARED_UPDATE_MAP;
 #endif
 #if defined(SINGLESTATUS) || defined (SINGLECLUSTER)
-bool** update_map;
+bool** UPDATE_MAP;
 #endif
 
 //creates a link with the given data
@@ -467,6 +467,8 @@ void FindCluster(bool** state, int maxX, int maxY, int cellX, int cellY, int& cl
     outline.endY = INT_MIN;
     cluster_size = 0;
     link* first_link;
+    int neighborX;
+    int neighborY;
 
     // pushing the first cell to the stack
     point current_point = point{ cellX, cellY };
@@ -474,7 +476,7 @@ void FindCluster(bool** state, int maxX, int maxY, int cellX, int cellY, int& cl
 
     // procces first point
     UpdateClusterOutline(current_point, outline);
-    state[current_point.cellX][current_point.cellY] = DEAD;
+    UPDATE_MAP[current_point.cellX][current_point.cellY] = UPDATED;
     cluster_size++;
 
     while (CURRENT_DATA > 0)
@@ -485,13 +487,20 @@ void FindCluster(bool** state, int maxX, int maxY, int cellX, int cellY, int& cl
         FindAllNeighbors(state, maxX, maxY, current_point.cellX, current_point.cellY, true);
         for (int i = 0; i < 8; i++) {
             if (FILLED[i]) {
-                // add neighbors to search list
-                AddData(point{ NEIGHBORS[i].cellX, NEIGHBORS[i].cellY });
+                neighborX = NEIGHBORS[i].cellX;
+                neighborY = NEIGHBORS[i].cellY;
 
-                // procces neighbors
-                UpdateClusterOutline(NEIGHBORS[i], outline);
-                state[current_point.cellX][current_point.cellY] = DEAD;
-                cluster_size++;
+                // check if the cell is being revisited
+                if (UPDATE_MAP[neighborX][neighborY] == PENDING)
+                {
+                    // add neighbors to search list
+                    AddData(point{ neighborX, neighborY });
+
+                    // procces neighbors and mark them as updated
+                    UpdateClusterOutline(NEIGHBORS[i], outline);
+                    UPDATE_MAP[neighborX][neighborY] = UPDATED;
+                    cluster_size++;
+                }
             }
         }
 
@@ -801,10 +810,10 @@ void UpdateNeighbors(bool** old_state, bool** current_state, int maxX, int maxY,
             currY = NEIGHBORS[i].cellY;
 
             // updating the cell only if it wasent updated already
-            if (update_map[currX][currY] == PENDING) {
+            if (UPDATE_MAP[currX][currY] == PENDING) {
 
                 current_state[currX][currY] = CellStatus(old_state, currX, currY, maxX, maxY);
-                update_map[currX][currY] = UPDATED;
+                UPDATE_MAP[currX][currY] = UPDATED;
             }
         }
     }
@@ -879,30 +888,30 @@ void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int max
         current_state[cellX][maxY - BORDER_SIZE - 1] = CellStatus(old_state, cellX, maxY - BORDER_SIZE - 1, maxX, maxY);
         current_state[cellX][BORDER_SIZE] = CellStatus(old_state, cellX, BORDER_SIZE, maxX, maxY);
 
-        update_map[cellX][maxY - BORDER_SIZE - 1] = UPDATED;
-        update_map[cellX][BORDER_SIZE] = UPDATED;
+        UPDATE_MAP[cellX][maxY - BORDER_SIZE - 1] = UPDATED;
+        UPDATE_MAP[cellX][BORDER_SIZE] = UPDATED;
     }
     // force update top and bottom edges
     for (int cellY = BORDER_SIZE - 1; cellY < maxY - BORDER_SIZE; cellY++) {
         current_state[maxX - BORDER_SIZE - 1][cellY] = CellStatus(old_state, maxX - BORDER_SIZE - 1, cellY, maxX, maxY);
         current_state[BORDER_SIZE][cellY] = CellStatus(old_state, BORDER_SIZE, cellY, maxX, maxY);
 
-        update_map[maxX - BORDER_SIZE - 1][cellY] = UPDATED;
-        update_map[BORDER_SIZE][cellY] = UPDATED;
+        UPDATE_MAP[maxX - BORDER_SIZE - 1][cellY] = UPDATED;
+        UPDATE_MAP[BORDER_SIZE][cellY] = UPDATED;
     }
 
 #ifdef SINGLESTATUS
     // reset the map for this update sycle
-    ZeroFillMatrix(update_map, maxX, maxY);
+    ZeroFillMatrix(UPDATE_MAP, maxX, maxY);
 
     for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
         for (int cellY = BORDER_SIZE; cellY < maxY - BORDER_SIZE; cellY++) {
             // making sure that the cell is both alive, and wasn't updated yet
             if (old_state[cellX][cellY] == ALIVE &&
-                update_map[cellX][cellY] == PENDING) {
+                UPDATE_MAP[cellX][cellY] == PENDING) {
 
                 current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
-                update_map[cellX][cellY] = UPDATED;
+                UPDATE_MAP[cellX][cellY] = UPDATED;
 
                 UpdateNeighbors(old_state, current_state, maxX, maxY, cellX, cellY);
             }
@@ -1103,7 +1112,6 @@ void OutlineCaller(bool** current_state, int maxX, int maxY, COLORREF* colors) {
         }
     }
 
-    bool** state_copy = CloneMatrix(current_state, maxX, maxY);
     int    cluster_size;
     sector outline;
 
@@ -1125,11 +1133,16 @@ void OutlineCaller(bool** current_state, int maxX, int maxY, COLORREF* colors) {
     pass_size = OVERPOPULATION * 2;
 #endif // LARGE
 
+    // reset the update map
+    ZeroFillMatrix(UPDATE_MAP, maxX, maxY);
+
     // add outlines one by one
     for (int cellX = 0; cellX < maxX; cellX++) {
         for (int cellY = 0; cellY < maxY; cellY++) {
-            if (state_copy[cellX][cellY] == ALIVE) {
-                FindCluster(state_copy, maxX, maxY, cellX, cellY, cluster_size, outline);
+            if (current_state[cellX][cellY] == ALIVE && // no updated cells will pass
+                UPDATE_MAP[cellX][cellY] == PENDING) {
+
+                FindCluster(current_state, maxX, maxY, cellX, cellY, cluster_size, outline);
                 if (cluster_size > pass_size) { // clusters of less than the constant CANNOT survive, no matter the arrangment
                     DrawSectorOutline(outline, colors, maxX, maxY);
                 }
@@ -1147,7 +1160,6 @@ void OutlineCaller(bool** current_state, int maxX, int maxY, COLORREF* colors) {
 
     DeleteObject(bitmap);
     DeleteObject(scr);
-    DeleteMatrix<bool>(state_copy);
 }
 
 int main() {
@@ -1182,7 +1194,7 @@ int main() {
 
     bool** current_state = CreateMatrix<bool>(maxX, maxY);
     bool** old_state = CreateMatrix<bool>(maxX, maxY); // purly to stop the 'uninitialised used'
-    update_map = CreateMatrix<bool>(maxX, maxY);
+    UPDATE_MAP = CreateMatrix<bool>(maxX, maxY);
     bool initial;
     int gen = 0;
 
