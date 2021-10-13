@@ -295,14 +295,20 @@ void DeleteMatrix(T** matrix) {
     delete[] matrix;
 }
 
-// copies an existing matrix, given size is of the original
+// returns a clone of the existing matrix
 template <typename T>
-T** CopyMatrix(T** original, int maxX, int maxY) {
+T** CloneMatrix(T** original, int maxX, int maxY) {
     T** new_matrix = CreateMatrix<bool>(maxX, maxY);
 
     memcpy(new_matrix[0], original[0], sizeof(T) * maxX * maxY);
 
     return new_matrix;
+}
+
+// copies over the date from one matrix to another, must be same size and type
+template <typename T>
+void CopyMatrix(T** source, T** target, int maxX, int maxY) {
+    memcpy(target[0], source[0], sizeof(T) * maxX * maxY);
 }
 
 // returns a smaller matrix of an area in the state
@@ -453,7 +459,7 @@ void UpdateClusterOutline(point& point, sector& outline) {
 }
 
 // finds a cluster of points connected to the given coordinates and updates the outline
-void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, int& cluster_size, sector& outline) {
+void FindCluster(bool** state, int maxX, int maxY, int cellX, int cellY, int& cluster_size, sector& outline) {
 
     outline.startX = INT_MAX;
     outline.endX = INT_MIN;
@@ -468,7 +474,7 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, in
 
     // procces first point
     UpdateClusterOutline(current_point, outline);
-    state_copy[current_point.cellX][current_point.cellY] = DEAD;
+    state[current_point.cellX][current_point.cellY] = DEAD;
     cluster_size++;
 
     while (CURRENT_DATA > 0)
@@ -476,7 +482,7 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, in
         first_link = GetFirstLink();
         current_point = first_link->data;
 
-        FindAllNeighbors(state_copy, maxX, maxY, current_point.cellX, current_point.cellY, true);
+        FindAllNeighbors(state, maxX, maxY, current_point.cellX, current_point.cellY, true);
         for (int i = 0; i < 8; i++) {
             if (FILLED[i]) {
                 // add neighbors to search list
@@ -484,7 +490,7 @@ void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, in
 
                 // procces neighbors
                 UpdateClusterOutline(NEIGHBORS[i], outline);
-                state_copy[current_point.cellX][current_point.cellY] = DEAD;
+                state[current_point.cellX][current_point.cellY] = DEAD;
                 cluster_size++;
             }
         }
@@ -1097,7 +1103,7 @@ void OutlineCaller(bool** current_state, int maxX, int maxY, COLORREF* colors) {
         }
     }
 
-    bool** state_copy = CopyMatrix(current_state, maxX, maxY);
+    bool** state_copy = CloneMatrix(current_state, maxX, maxY);
     int    cluster_size;
     sector outline;
 
@@ -1205,8 +1211,7 @@ int main() {
         // fill the sceeen according to settings
         unsigned int seed = time(0);
         Initialize(current_state, maxX, maxY, seed);
-        DeleteMatrix<bool>(old_state);
-        old_state = CopyMatrix(current_state, maxX, maxY);
+        CopyMatrix(current_state, old_state, maxX, maxY);
         initial = true;
 #ifdef TIMED
         gen = 0;
@@ -1252,8 +1257,7 @@ int main() {
             initial = false;
             //ClearSectorOutlines(outlines);
 
-            DeleteMatrix<bool>(old_state); // idea: overwrite instead of deleting
-            old_state = CopyMatrix(current_state, maxX, maxY);
+            CopyMatrix(current_state, old_state, maxX, maxY);
             UpdateStateMatrix(old_state, current_state, maxX, maxY);
 
 #ifndef NOOUTLINES
