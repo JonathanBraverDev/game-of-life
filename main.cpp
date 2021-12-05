@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <thread>
 #include <vector>
+#include <atomic>
 
 #define RANDOM
 // RANDOM will start with a randomly genereted first generation
@@ -11,13 +12,14 @@
 #define FHD
 // FHD will force the screen to 1080p, windows scaling fucks up the automatic detection
 // NATIVE will allow adapting to the resolution of the display
-#define NODELAY
+#define SCENIC
 // PATIENT will wait before rendering each genereation
 // SCENIC will slow the rendering enough for comftable viewing
 // NODELAY will disable the sleep between renders
-#define BRUTAL
+#define TIMED
 // EFFICENT will run until the activity drops low enogh to be boring
 // BRUTAL will disable activity detection, running to the bitter end (and probably never getting there)
+// TIMED will run the shortest between a set amount of generations and EFFICENT mode
 #define BITMAP
 // LINEAR will render the scren as a big chunk (old and slow)
 // MULTIRENDER will split rendering into a few columns (old and slow)
@@ -30,14 +32,20 @@
 #define TRAPPED
 // LOOPING will cause the screen to loop like in the game asteroids (simplest example)
 // TRAPPED will enforce the screen borders, eliminating anything that dares to leave
-#define NOTABLE
+#define SURVIVING
 // NOOUTLINES will not show outlines // !IMPORTANT! uses more memory that outlines, 23 vs 16
 // ALL will outline any cluster lasrger than a single cell
 // SURVIVING will outline clusters who are expected to survive
 // NOTABLE will outline clusters with more likly activity
 // LARGE will outline clusters of significant size
+#define SINGLESTATUS
+// MULTISTATUS will use unlimited threads to update cell status
+// SINGLESTATUS will not
+#define MULTICLUSTER
+// MULTICLUSTER will use unlimited threads to find clusters
+// SINGLECLUSTER
 
-#define LUSH
+#define NORMAL
 // NORMAL will set the survival parameters to their respective defaults (bitmap generation and filling ~25% runtime, Nooutlines's the same)
 // LUSH will increase max population, multiplication and survival rates (stack operations ~50% combined runtime, 60% CellStatus Nooutlines)
 // PARADISE will unlock the secrets to ethernal life
@@ -47,9 +55,15 @@ using namespace std;
 #ifdef RANDOM
 constexpr auto INITIAL_LIFE_RATIO = 15; // this is an INVERSE (1 is EVERY pixel)
 #endif // RANDOM
-const bool ALIVE = true;
+#ifdef TIMED
+constexpr auto MAX_GEN = 200;
+#endif // TIMED
+const bool ALIVE = true; // setting for easier use
 const bool DEAD = false;
+const bool UPDATED = true;
+const bool PENDING = false;
 const int BORDER_SIZE = 1;
+const int THREAD_LIMIT = thread::hardware_concurrency();
 
 
 #ifdef NORMAL
@@ -135,6 +149,13 @@ link* HEAD = nullptr;
 point* NEIGHBORS = new point[8];
 bool* FILLED = new bool[8];
 int CURRENT_DATA = 0;
+
+#if defined(MULTISTATUS) || defined (MULTICLUSTER)
+atomic<bool>** SHARED_UPDATE_MAP;
+#endif
+#if defined(SINGLESTATUS) || defined (SINGLECLUSTER)
+bool** UPDATE_MAP;
+#endif
 
 //creates a link with the given data
 void AddLink(point data) {
@@ -249,16 +270,22 @@ sector CreateSector(int startX, int endX, int startY, int endY) {
     return new_sector;
 }
 
-// creates a single block matrix allocation and splits it into arrays
+// creates a single block matrix allocation and splits it for easier access
 template <typename T>
 T** CreateMatrix(int maxX, int maxY) {
-    T** matrix = new T * [maxX];
+    T** matrix = new T* [maxX];
     matrix[0] = new T[maxX * maxY];
-    for (int cellX = 1; cellX < maxX; cellX++) {
-        matrix[cellX] = matrix[0] + cellX * maxY;
+    for (int i = 1; i < maxX; i++) {
+        matrix[i] = matrix[i - 1] + maxY;
     }
 
     return matrix;
+}
+
+// zeroes out the matrix without dealocating
+template <typename T>
+void ZeroFillMatrix(T** matrix, int maxX, int maxY) {
+    memset(matrix[0], 0, sizeof(T) * maxX * maxY);
 }
 
 // deletes single block allocated matrixes 
@@ -268,16 +295,20 @@ void DeleteMatrix(T** matrix) {
     delete[] matrix;
 }
 
-// copies an existing matrix, given size is of the original
+// returns a clone of the existing matrix
 template <typename T>
-T** CopyMatrix(T** original, int maxX, int maxY) {
+T** CloneMatrix(T** original, int maxX, int maxY) {
     T** new_matrix = CreateMatrix<bool>(maxX, maxY);
 
-    for (int cellX = 0; cellX < maxX; cellX++) {
-        copy(original[cellX], original[cellX] + maxY, new_matrix[cellX]);
-    }
+    memcpy(new_matrix[0], original[0], sizeof(T) * maxX * maxY);
 
     return new_matrix;
+}
+
+// copies over the date from one matrix to another, must be same size and type
+template <typename T>
+void CopyMatrix(T** source, T** target, int maxX, int maxY) {
+    memcpy(target[0], source[0], sizeof(T) * maxX * maxY);
 }
 
 // returns a smaller matrix of an area in the state
@@ -327,13 +358,13 @@ snapshot CreateSnapshot(bool** state, sector sector) {
 }
 
 // fills the given array with cells nearby, alive or all according to the setting
-void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cellY, bool live_only = false) {
+void FindAllNeighbors(bool** state, int maxX, int maxY, int cellX, int cellY, bool live_only = false) {
     int i = 0;
     point tmp;
 
     // counting neighbors, looping edges
     FILLED[i] = false;
-    if (cellX > BORDER_SIZE && (!live_only || state_copy[cellX - 1][cellY] == ALIVE)) { // left
+    if (cellX > BORDER_SIZE && (!live_only || state[cellX - 1][cellY] == ALIVE)) { // left
         tmp.cellX = cellX - 1;
         tmp.cellY = cellY;
         NEIGHBORS[i] = tmp;
@@ -342,7 +373,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
     i++;
 
     FILLED[i] = false;
-    if (cellY > BORDER_SIZE && (!live_only || state_copy[cellX][cellY - 1] == ALIVE)) { // up
+    if (cellY > BORDER_SIZE && (!live_only || state[cellX][cellY - 1] == ALIVE)) { // up
         tmp.cellX = cellX;
         tmp.cellY = cellY - 1;
         NEIGHBORS[i] = tmp;
@@ -351,7 +382,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
     i++;
 
     FILLED[i] = false;
-    if (cellX < maxX - BORDER_SIZE - 1 && (!live_only || state_copy[cellX + 1][cellY] == ALIVE)) { // right
+    if (cellX < maxX - BORDER_SIZE - 1 && (!live_only || state[cellX + 1][cellY] == ALIVE)) { // right
         tmp.cellX = cellX + 1;
         tmp.cellY = cellY;
         NEIGHBORS[i] = tmp;
@@ -360,7 +391,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
     i++;
 
     FILLED[i] = false;
-    if (cellY < maxY - BORDER_SIZE - 1 && (!live_only || state_copy[cellX][cellY + 1] == ALIVE)) { // down
+    if (cellY < maxY - BORDER_SIZE - 1 && (!live_only || state[cellX][cellY + 1] == ALIVE)) { // down
         tmp.cellX = cellX;
         tmp.cellY = cellY + 1;
         NEIGHBORS[i] = tmp;
@@ -370,7 +401,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
 
     FILLED[i] = false;
     if (cellX > BORDER_SIZE && cellY > BORDER_SIZE // top left
-        && (!live_only || state_copy[cellX - 1][cellY - 1] == ALIVE)) {
+        && (!live_only || state[cellX - 1][cellY - 1] == ALIVE)) {
         tmp.cellX = cellX - 1;
         tmp.cellY = cellY - 1;
         NEIGHBORS[i] = tmp;
@@ -380,7 +411,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
 
     FILLED[i] = false;
     if (cellX < maxX - BORDER_SIZE - 1 && cellY < maxY - BORDER_SIZE - 1 // bottom right
-        && (!live_only || state_copy[cellX + 1][cellY + 1] == ALIVE)) {
+        && (!live_only || state[cellX + 1][cellY + 1] == ALIVE)) {
         tmp.cellX = cellX + 1;
         tmp.cellY = cellY + 1;
         NEIGHBORS[i] = tmp;
@@ -390,7 +421,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
 
     FILLED[i] = false;
     if (cellX < maxX - BORDER_SIZE - 1 && cellY > BORDER_SIZE // top right
-        && (!live_only || state_copy[cellX + 1][cellY - 1] == ALIVE)) {
+        && (!live_only || state[cellX + 1][cellY - 1] == ALIVE)) {
         tmp.cellX = cellX + 1;
         tmp.cellY = cellY - 1;
         NEIGHBORS[i] = tmp;
@@ -400,7 +431,7 @@ void FindAllNeighbors(bool** state_copy, int maxX, int maxY, int cellX, int cell
 
     FILLED[i] = false;
     if (cellX > BORDER_SIZE && cellY < maxY - BORDER_SIZE - 1 // bottom left
-        && (!live_only || state_copy[cellX - 1][cellY + 1] == ALIVE)) {
+        && (!live_only || state[cellX - 1][cellY + 1] == ALIVE)) {
         tmp.cellX = cellX - 1;
         tmp.cellY = cellY + 1;
         NEIGHBORS[i] = tmp;
@@ -428,34 +459,48 @@ void UpdateClusterOutline(point& point, sector& outline) {
 }
 
 // finds a cluster of points connected to the given coordinates and updates the outline
-void FindCluster(bool** state_copy, int maxX, int maxY, int cellX, int cellY, int& cluster_size, sector& outline) {
+void FindCluster(bool** state, int maxX, int maxY, int cellX, int cellY, int& cluster_size, sector& outline) {
 
     outline.startX = INT_MAX;
     outline.endX = INT_MIN;
     outline.startY = INT_MAX;
     outline.endY = INT_MIN;
     cluster_size = 0;
-
-    point current_point = point{ cellX, cellY };
-    AddData(current_point); // pushing current cell to the stack
     link* first_link;
+    int neighborX;
+    int neighborY;
 
+    // pushing the first cell to the stack
+    point current_point = point{ cellX, cellY };
+    AddData(current_point);
+
+    // procces first point
+    UpdateClusterOutline(current_point, outline);
+    UPDATE_MAP[current_point.cellX][current_point.cellY] = UPDATED;
+    cluster_size++;
 
     while (CURRENT_DATA > 0)
     {
         first_link = GetFirstLink();
         current_point = first_link->data;
 
-        FindAllNeighbors(state_copy, maxX, maxY, current_point.cellX, current_point.cellY, true);
+        FindAllNeighbors(state, maxX, maxY, current_point.cellX, current_point.cellY, true);
         for (int i = 0; i < 8; i++) {
             if (FILLED[i]) {
-                // add neighbors to search list
-                AddData(point{ NEIGHBORS[i].cellX, NEIGHBORS[i].cellY });
+                neighborX = NEIGHBORS[i].cellX;
+                neighborY = NEIGHBORS[i].cellY;
 
-                // procces and mark neighbors as such
-                UpdateClusterOutline(current_point, outline);
-                state_copy[current_point.cellX][current_point.cellY] = DEAD;
-                cluster_size++;
+                // check if the cell is being revisited
+                if (UPDATE_MAP[neighborX][neighborY] == PENDING)
+                {
+                    // add neighbors to search list
+                    AddData(point{ neighborX, neighborY });
+
+                    // procces neighbors and mark them as updated
+                    UpdateClusterOutline(NEIGHBORS[i], outline);
+                    UPDATE_MAP[neighborX][neighborY] = UPDATED;
+                    cluster_size++;
+                }
             }
         }
 
@@ -754,18 +799,22 @@ bool CellStatus(bool** old_state, int cellX, int cellY, int maxX, int maxY) {
 }
 
 // updates the neighbors of the given cell
-void UpdateNeighbors(bool** old_state, bool** current_state, bool** old_copy, int maxX, int maxY, int cellX, int cellY) {
-    old_copy[cellX][cellY] = DEAD; // marking itself as dead
+void UpdateNeighbors(bool** old_state, bool** current_state, int maxX, int maxY, int cellX, int cellY) {
     int currX;
     int currY;
-    FindAllNeighbors(old_copy, maxX, maxY, cellX, cellY);
+    FindAllNeighbors(old_state, maxX, maxY, cellX, cellY);
 
     for (int i = 0; i < 8; i++) {
-        currX = NEIGHBORS[i].cellX;
-        currY = NEIGHBORS[i].cellY;
         if (FILLED[i]) {
-            old_copy[currX][currY] = DEAD;
-            current_state[currX][currY] = CellStatus(old_state, currX, currY, maxX, maxY);
+            currX = NEIGHBORS[i].cellX;
+            currY = NEIGHBORS[i].cellY;
+
+            // updating the cell only if it wasent updated already
+            if (UPDATE_MAP[currX][currY] == PENDING) {
+
+                current_state[currX][currY] = CellStatus(old_state, currX, currY, maxX, maxY);
+                UPDATE_MAP[currX][currY] = UPDATED;
+            }
         }
     }
 }
@@ -796,55 +845,91 @@ void BorderSetter(bool** current_state, int maxX, int maxY) {
 #else
     // handling special cases
     // bottom right to top left
-    current_state[BORDER_SIZE - 1][BORDER_SIZE - 1] = false;
+    current_state[BORDER_SIZE - 1][BORDER_SIZE - 1] = DEAD;
     // top left to bottm right
-    current_state[maxX - BORDER_SIZE][maxY - BORDER_SIZE] = false;
+    current_state[maxX - BORDER_SIZE][maxY - BORDER_SIZE] = DEAD;
     // bottom left to top right
-    current_state[maxX - BORDER_SIZE][BORDER_SIZE - 1] = false;
+    current_state[maxX - BORDER_SIZE][BORDER_SIZE - 1] = DEAD;
     // top right to bottom left 
-    current_state[BORDER_SIZE - 1][maxY - BORDER_SIZE] = false;
+    current_state[BORDER_SIZE - 1][maxY - BORDER_SIZE] = DEAD;
 
     // false fill top and bottom borders
     for (int cellX = BORDER_SIZE; cellX < maxX; cellX++) {
-        current_state[cellX][BORDER_SIZE - 1] = false;
-        current_state[cellX][maxY - BORDER_SIZE] = false;
+        current_state[cellX][BORDER_SIZE - 1] = DEAD;
+        current_state[cellX][maxY - BORDER_SIZE] = DEAD;
     }
     // false fill left and right borders
     for (int cellY = BORDER_SIZE - 1; cellY < maxY; cellY++) {
-        current_state[BORDER_SIZE - 1][cellY] = false;
-        current_state[maxX - BORDER_SIZE][cellY] = false;
+        current_state[BORDER_SIZE - 1][cellY] = DEAD;
+        current_state[maxX - BORDER_SIZE][cellY] = DEAD;
     }
 #endif // LOOPING
 }
 
-// updates the world to the next iteration
+void UpdateThread(bool** old_state, bool** old_copy, bool** current_state, int maxX, int maxY, int index) {
+    for (int cellX = index + BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX += THREAD_LIMIT) {
+        for (int cellY = BORDER_SIZE; cellY < maxY - BORDER_SIZE; cellY++) {
+            //if (old_copy[cellX][cellY] == ALIVE) {
+            current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
+            //UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY);
+        //}
+        }
+    }
+}
+
+// updates the state to the next iteration
 void UpdateStateMatrix(bool** old_state, bool** current_state, int maxX, int maxY) {
-    bool** old_copy = CopyMatrix(old_state, maxX, maxY);
+#ifdef MULTISTATUS
+    thread* threads = new thread[THREAD_LIMIT];
+#endif // MULTISTATUS
 
     // force update left and right edges
     for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
-        current_state[cellX][maxY - BORDER_SIZE - 1] = CellStatus(old_state, cellX, maxY - BORDER_SIZE - 1, maxX, maxY);;
-        current_state[cellX][BORDER_SIZE] = CellStatus(old_state, cellX, BORDER_SIZE, maxX, maxY);;
+        current_state[cellX][maxY - BORDER_SIZE - 1] = CellStatus(old_state, cellX, maxY - BORDER_SIZE - 1, maxX, maxY);
+        current_state[cellX][BORDER_SIZE] = CellStatus(old_state, cellX, BORDER_SIZE, maxX, maxY);
+
+        UPDATE_MAP[cellX][maxY - BORDER_SIZE - 1] = UPDATED;
+        UPDATE_MAP[cellX][BORDER_SIZE] = UPDATED;
     }
     // force update top and bottom edges
     for (int cellY = BORDER_SIZE - 1; cellY < maxY - BORDER_SIZE; cellY++) {
-        current_state[maxX - BORDER_SIZE - 1][cellY] = CellStatus(old_state, maxX - BORDER_SIZE - 1, cellY, maxX, maxY);;
-        current_state[BORDER_SIZE][cellY] = CellStatus(old_state, BORDER_SIZE, cellY, maxX, maxY);;
+        current_state[maxX - BORDER_SIZE - 1][cellY] = CellStatus(old_state, maxX - BORDER_SIZE - 1, cellY, maxX, maxY);
+        current_state[BORDER_SIZE][cellY] = CellStatus(old_state, BORDER_SIZE, cellY, maxX, maxY);
+
+        UPDATE_MAP[maxX - BORDER_SIZE - 1][cellY] = UPDATED;
+        UPDATE_MAP[BORDER_SIZE][cellY] = UPDATED;
     }
 
+#ifdef SINGLESTATUS
+    // reset the map for this update sycle
+    ZeroFillMatrix(UPDATE_MAP, maxX, maxY);
 
     for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
         for (int cellY = BORDER_SIZE; cellY < maxY - BORDER_SIZE; cellY++) {
-            if (old_copy[cellX][cellY] == ALIVE) {
+            // making sure that the cell is both alive, and wasn't updated yet
+            if (old_state[cellX][cellY] == ALIVE &&
+                UPDATE_MAP[cellX][cellY] == PENDING) {
+
                 current_state[cellX][cellY] = CellStatus(old_state, cellX, cellY, maxX, maxY);
-                UpdateNeighbors(old_state, current_state, old_copy, maxX, maxY, cellX, cellY);
+                UPDATE_MAP[cellX][cellY] = UPDATED;
+
+                UpdateNeighbors(old_state, current_state, maxX, maxY, cellX, cellY);
             }
         }
     }
+#endif // SINGLESTATUS
+
+#ifdef MULTISTATUS
+    for (int i = 0; i < THREAD_LIMIT; i++) {
+        threads[i] = thread(UpdateThread, old_state, old_copy, current_state, maxX, maxY, i);
+    }
+
+    for (int i = 0; i < THREAD_LIMIT; i++) {
+        threads[i].join();
+    }
+#endif // MULTISTATUS
 
     BorderSetter(current_state, maxX, maxY);
-
-    DeleteMatrix<bool>(old_copy);
 }
 
 // check if life has exausted itself in the system
@@ -920,17 +1005,17 @@ bool EndOfCycle(bool** old_state, bool** current_state, int maxX, int maxY) {
 }
 
 // fill the first generation according to selecte ruels
-void Initialize(bool** current_state, int maxX, int maxY) {
+void Initialize(bool** current_state, int maxX, int maxY, unsigned int seed = time(0)) {
 #ifdef RANDOM
     // randomize the first generation
-    srand(time(0));
+    srand(seed);
     for (int cellX = BORDER_SIZE; cellX < maxX - BORDER_SIZE; cellX++) {
         for (int cellY = BORDER_SIZE; cellY < maxY - BORDER_SIZE; cellY++) {
             if (rand() % INITIAL_LIFE_RATIO == 0) {
-                current_state[cellX][cellY] = true;
+                current_state[cellX][cellY] = ALIVE;
             }
             else {
-                current_state[cellX][cellY] = false;
+                current_state[cellX][cellY] = DEAD;
             }
         }
     }
@@ -1027,7 +1112,6 @@ void OutlineCaller(bool** current_state, int maxX, int maxY, COLORREF* colors) {
         }
     }
 
-    bool** state_copy = CopyMatrix(current_state, maxX, maxY);
     int    cluster_size;
     sector outline;
 
@@ -1049,11 +1133,16 @@ void OutlineCaller(bool** current_state, int maxX, int maxY, COLORREF* colors) {
     pass_size = OVERPOPULATION * 2;
 #endif // LARGE
 
+    // reset the update map
+    ZeroFillMatrix(UPDATE_MAP, maxX, maxY);
+
     // add outlines one by one
     for (int cellX = 0; cellX < maxX; cellX++) {
         for (int cellY = 0; cellY < maxY; cellY++) {
-            if (state_copy[cellX][cellY] == ALIVE) {
-                FindCluster(state_copy, maxX, maxY, cellX, cellY, cluster_size, outline);
+            if (current_state[cellX][cellY] == ALIVE && // no updated cells will pass
+                UPDATE_MAP[cellX][cellY] == PENDING) {
+
+                FindCluster(current_state, maxX, maxY, cellX, cellY, cluster_size, outline);
                 if (cluster_size > pass_size) { // clusters of less than the constant CANNOT survive, no matter the arrangment
                     DrawSectorOutline(outline, colors, maxX, maxY);
                 }
@@ -1071,7 +1160,6 @@ void OutlineCaller(bool** current_state, int maxX, int maxY, COLORREF* colors) {
 
     DeleteObject(bitmap);
     DeleteObject(scr);
-    DeleteMatrix<bool>(state_copy);
 }
 
 int main() {
@@ -1106,6 +1194,7 @@ int main() {
 
     bool** current_state = CreateMatrix<bool>(maxX, maxY);
     bool** old_state = CreateMatrix<bool>(maxX, maxY); // purly to stop the 'uninitialised used'
+    UPDATE_MAP = CreateMatrix<bool>(maxX, maxY);
     bool initial;
     int gen = 0;
 
@@ -1122,69 +1211,77 @@ int main() {
 #ifdef RESURGENT
     while (true)
 #endif // RESURGENT
+
 #ifdef UNCERTAIN
-        while (HandleResponse(response) != false)
+    while (HandleResponse(response) != false)
 #endif // UNCERTAIN
 
 #ifndef DOOMED
-        {
+    {
 #endif // DOOMED
 
-            // fill the sceeen according to settings
-            Initialize(current_state, maxX, maxY);
-            DeleteMatrix<bool>(old_state);
-            old_state = CopyMatrix(current_state, maxX, maxY);
-            initial = true;
-            gen = 0;
+        // fill the sceeen according to settings
+        unsigned int seed = time(0);
+        Initialize(current_state, maxX, maxY, seed);
+        CopyMatrix(current_state, old_state, maxX, maxY);
+        initial = true;
+#ifdef TIMED
+        gen = 0;
+#endif
 
-            //// debug seting cells
-            //current_state[BORDER_SIZE][BORDER_SIZE] = DEAD;
-            //current_state[BORDER_SIZE][BORDER_SIZE + 1] = DEAD;
-            //current_state[BORDER_SIZE][BORDER_SIZE + 2] = DEAD;
-            //current_state[BORDER_SIZE][BORDER_SIZE + 3] = DEAD;
-            //current_state[BORDER_SIZE + 1][BORDER_SIZE] = ALIVE;
-            //current_state[BORDER_SIZE + 1][BORDER_SIZE + 1] = ALIVE;
-            //current_state[BORDER_SIZE + 1][BORDER_SIZE + 2] = ALIVE;
-            //current_state[BORDER_SIZE + 1][BORDER_SIZE + 3] = DEAD;
-            //current_state[BORDER_SIZE + 2][BORDER_SIZE] = DEAD;
-            //current_state[BORDER_SIZE + 2][BORDER_SIZE + 1] = DEAD;
-            //current_state[BORDER_SIZE + 2][BORDER_SIZE + 2] = DEAD;
-            //current_state[BORDER_SIZE + 2][BORDER_SIZE + 3] = DEAD;
+        //// debug seting cells
+        //current_state[BORDER_SIZE][BORDER_SIZE] = DEAD;
+        //current_state[BORDER_SIZE][BORDER_SIZE + 1] = DEAD;
+        //current_state[BORDER_SIZE][BORDER_SIZE + 2] = DEAD;
+        //current_state[BORDER_SIZE][BORDER_SIZE + 3] = DEAD;
+        //current_state[BORDER_SIZE + 1][BORDER_SIZE] = ALIVE;
+        //current_state[BORDER_SIZE + 1][BORDER_SIZE + 1] = ALIVE;
+        //current_state[BORDER_SIZE + 1][BORDER_SIZE + 2] = ALIVE;
+        //current_state[BORDER_SIZE + 1][BORDER_SIZE + 3] = DEAD;
+        //current_state[BORDER_SIZE + 2][BORDER_SIZE] = DEAD;
+        //current_state[BORDER_SIZE + 2][BORDER_SIZE + 1] = DEAD;
+        //current_state[BORDER_SIZE + 2][BORDER_SIZE + 2] = DEAD;
+        //current_state[BORDER_SIZE + 2][BORDER_SIZE + 3] = DEAD;
 
-            // initial render
+        // initial render
 #ifndef NOOUTLINES
-            OutlineCaller(current_state, maxX, maxY, colors);
+        OutlineCaller(current_state, maxX, maxY, colors);
 #else
-            UpdateScreen(current_state, maxX, maxY, old_state, true, colors);
+        UpdateScreen(current_state, maxX, maxY, old_state, true, colors);
 #endif // !NOOUTLINES
 
-            while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < 75) {
+#ifdef TIMED
+        while (initial || !EndOfCycle(old_state, current_state, maxX, maxY) && gen < MAX_GEN) {
+#else
+        while (initial || !EndOfCycle(old_state, current_state, maxX, maxY)) {
+#endif // TIMED
 
 #if defined(PATIENT) || defined(TEXTPRINT)
-                Sleep(1500);
+            Sleep(1500);
 #endif // defined(PATIENT) || defined(TEXTPRINT)
 #ifdef SCENIC
-                Sleep(250);
+            Sleep(250);
 #endif // SCENIC
 
-                gen++;
-                initial = false;
-                //ClearSectorOutlines(outlines);
+#ifdef TIMED
+            gen++;
+#endif
+            initial = false;
+            //ClearSectorOutlines(outlines);
 
-                DeleteMatrix<bool>(old_state); // idea: overwrite instead of deleting
-                old_state = CopyMatrix(current_state, maxX, maxY);
-                UpdateStateMatrix(old_state, current_state, maxX, maxY);
+            CopyMatrix(current_state, old_state, maxX, maxY);
+            UpdateStateMatrix(old_state, current_state, maxX, maxY);
 
 #ifndef NOOUTLINES
-                OutlineCaller(current_state, maxX, maxY, colors); // crash here, queue add, not first outline call
+            OutlineCaller(current_state, maxX, maxY, colors); // crash here, queue add, not first outline call
 #else
-                UpdateScreen(current_state, maxX, maxY, old_state, false, colors);
+            UpdateScreen(current_state, maxX, maxY, old_state, false, colors);
 #endif // !NOOUTLINES
-            }
+        }
 
 #ifdef UNCERTAIN
-            cout << "restart? (y/n)" << endl;
-            cin >> response;
+        cout << "restart? (y/n)" << endl;
+        cin >> response;
 #endif // UNCERTAIN
 
 #ifndef DOOMED
@@ -1203,7 +1300,7 @@ int main() {
 #ifndef NOOUTLINES
     DeleteChain();
 #endif // !NOOUTLINES
-    
+
     // deleting global pointers
     delete HEAD;
     delete[] NEIGHBORS;
